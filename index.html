@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#1b1b1b">
+<title>Câmpi în Dristor</title>
+<meta name="description" content="Joc 3D open-world: Câmpi prin Dristorul real. Shaorma, păcănele, amanet, maidanezi și Moo Deng.">
+<meta property="og:title" content="CÂMPI ÎN DRISTOR 🦛">
+<meta property="og:description" content="Open world în Dristorul adevărat. Shaorma, păcănele, amanet, maidanezi și Moo Deng.">
+<meta property="og:type" content="website">
+<!-- OG_IMAGE -->
+<link rel="icon" href="assets/icon.png">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">{ "imports": { "three": "./lib/three.module.min.js" } }</script>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="hud" class="hidden">
+  <div class="topbar">
+    <div class="pill" id="money">💰 23 lei</div>
+    <div class="pill" id="coins">6·7 <b id="coinN">0</b>/20</div>
+  </div>
+  <div id="mission" class="pill"></div>
+  <canvas id="minimap" width="150" height="150"></canvas>
+  <div id="inv"></div>
+  <div id="joyzone"><div id="joy"><div id="knob"></div></div></div>
+  <div id="btns">
+    <button id="bAct" class="btn act hidden">VORBEȘTE</button>
+    <button id="bJump" class="btn round">SARI</button>
+    <button id="bRun" class="btn round small">🏃</button>
+  </div>
+  <button id="bMute" class="pill iconbtn">🔊</button>
+  <button id="bTTS" class="pill iconbtn" title="Voci NPC">🗣️</button>
+</div>
+
+<div id="toast"></div>
+<div id="phone" class="hidden"><div class="ph-head"><span id="phFrom"></span><span class="ph-app">WhatsApp</span></div><div id="phText"></div></div>
+<div id="bigmsg"></div>
+<div id="flash"></div>
+
+<div id="dialog" class="hidden">
+  <div id="dlgWho"></div>
+  <div id="dlgText"></div>
+  <div id="dlgChoices"></div>
+  <div id="dlgHint">atinge ca să continui ▸</div>
+</div>
+
+<div id="slots" class="hidden">
+  <div class="slot-box">
+    <div class="slot-title">PĂCĂNELE <span>DRISTOR ROYAL</span></div>
+    <div class="reels"><div class="reel" id="r0">7</div><div class="reel" id="r1">7</div><div class="reel" id="r2">7</div></div>
+    <div id="slotMsg">5 lei / rotire</div>
+    <div class="slot-btns"><button class="btn" id="spin">ÎNVÂRTE (5 lei)</button><button class="btn grey" id="slotExit">GATA</button></div>
+    <div class="slot-pay">🦛🦛🦛 100 · 7️⃣7️⃣7️⃣ 77 · 6️⃣7️⃣ 67 · BAR×3 50 · 🔔×3 30 · 🍒×3 15</div>
+  </div>
+</div>
+
+<div id="start" class="screen">
+  <div class="title">CÂMPI<br><span>ÎN DRISTOR</span></div>
+  <img id="startFace" src="assets/face-start.png" alt="Câmpi">
+  <div class="how">
+    <b>Telefon:</b> joystick stânga, trage cu degetul în dreapta ca să te uiți în jur.<br>
+    <b>PC:</b> WASD, Shift = fugă, Space = sari, E = vorbește, mouse = cameră.<br>
+    Harta e Dristorul real, din OpenStreetMap.
+  </div>
+  <button class="btn big" id="play">JOACĂ</button>
+  <div id="loading">Se încarcă Dristorul…</div>
+  <div class="credit">Făcut cu Claude Opus 5.5 · date hartă © OpenStreetMap contributors (ODbL)</div>
+</div>
+
+<div id="end" class="screen hidden">
+  <div class="title">MISIUNE<br><span>COMPLETĂ</span></div>
+  <img src="assets/face-start.png" alt="Câmpi">
+  <div id="endStats"></div>
+  <button class="btn big" id="freeRoam">EXPLOREAZĂ LIBER</button>
+  <button class="btn wa" id="share">Trimite pe WhatsApp</button>
+  <div class="credit">Făcut cu Claude Opus 5.5 · date hartă © OpenStreetMap contributors (ODbL)</div>
+</div>
+
+<script type="module" src="js/game.js"></script>
+</body>
+</html>
