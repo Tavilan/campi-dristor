@@ -446,11 +446,26 @@ async function setup() {
   { const d1 = DET.metroOut.find(m => /Dristor 1/.test(m.name || '')); if (d1) LOC.metro = walkable(d1.x, d1.z); }
   for (const m of DET.metroOut) if (m.name && /Dristor/.test(m.name)) { const l = labelSprite(m.name.toUpperCase(), '#ffffff', 1.1); l.position.set(m.x, 5, m.z); scene.add(l); }
   // --- Câmpi's block: a named "Bl." building 70-260 m from the metro
-  let blk = null, bd = 1e9;
-  for (const b of W.buildings) { if (!/^Bl/i.test(b.name || '') || b.h < 12) continue; const c = centroid(b.pts); const d = Math.hypot(c[0] - LOC.metro[0], c[1] - LOC.metro[1]); if (d > 70 && d < 260 && d < bd) { bd = d; blk = b; } }
-  if (!blk) blk = W.buildings.filter(b => b.h > 12).sort((a, b) => dist2(centroid(a.pts), LOC.metro) - dist2(centroid(b.pts), LOC.metro))[5];
-  const wall = longestEdge(blk.pts);
-  LOC.home = walkable(wall.mx + wall.nx * 4, wall.mz + wall.nz * 4);
+  // Câmpi's block: a tall residential block right by the boulevard, a short walk from the Dristor 1 entrance,
+  // with its long side facing the boulevard (that's where Tanti Geta's window and the start spot are)
+  const bigSegs = []; for (const r of W.roads) if (['primary', 'secondary', 'trunk'].includes(r.k)) for (let i = 0; i < r.pts.length - 1; i++) bigSegs.push([...r.pts[i], ...r.pts[i + 1], r.w]);
+  const bigDist = (x, z) => { let best = 1e9; for (const [x1, z1, x2, z2, w] of bigSegs) { const ex = x2 - x1, ez = z2 - z1, L2 = ex * ex + ez * ez || 1; let t = ((x - x1) * ex + (z - z1) * ez) / L2; t = Math.max(0, Math.min(1, t)); best = Math.min(best, Math.hypot(x - x1 - ex * t, z - z1 - ez * t) - w / 2); } return best; };
+  let blk = null, wall = null, bs = 1e9;
+  for (const b of W.buildings) { if (b.garage || b.special || b.plainKind || b.h < 12) continue;
+    const c = centroid(b.pts), dm = Math.hypot(c[0] - LOC.metro[0], c[1] - LOC.metro[1]); if (dm < 35 || dm > 220) continue;
+    const e = longestEdge(b.pts); if (e.L < 20) continue;
+    // use whichever long side faces the boulevard
+    let best = null; for (const sd of [1, -1]) { const mx = e.mx + (sd < 0 ? (c[0] - e.mx) * 2 : 0), mz = e.mz + (sd < 0 ? (c[1] - e.mz) * 2 : 0), nx = e.nx * sd, nz = e.nz * sd, rd = bigDist(mx + nx * 6, mz + nz * 6);
+      if (!best || rd < best.rd) best = { rd, mx, mz, nx, nz, ex: e.ex * sd, ez: e.ez * sd, L: e.L }; }
+    if (best.rd > 45 || best.rd < 3) continue;
+    const score = dm + best.rd * 2.5 - (/^Bl/i.test(b.name || '') ? 15 : 0);
+    if (score < bs) { bs = score; blk = b; wall = best; } }
+  if (!blk) { let bd = 1e9; for (const b of W.buildings) { if (!/^Bl/i.test(b.name || '') || b.h < 12) continue; const c = centroid(b.pts); const d = Math.hypot(c[0] - LOC.metro[0], c[1] - LOC.metro[1]); if (d > 70 && d < 260 && d < bd) { bd = d; blk = b; } } wall = longestEdge(blk.pts); }
+  { // start spot: in front of the block, past the little front gardens, with nothing (dryer, bench, tree) within 1.6 m
+    const clear = (x, z, r) => !W.collider.near(x, z).some(q => { if (Collider.inside(q.pts, x, z)) return true; const P2 = q.pts; for (let i = 0, j = P2.length - 1; i < P2.length; j = i++) { const [ax, az] = P2[j], [bx, bz] = P2[i], ex = bx - ax, ez = bz - az, L2 = ex * ex + ez * ez || 1; let t = ((x - ax) * ex + (z - az) * ez) / L2; t = Math.max(0, Math.min(1, t)); if (Math.hypot(x - ax - ex * t, z - az - ez * t) < r) return true; } return false; });
+    let hx = wall.mx + wall.nx * 8, hz = wall.mz + wall.nz * 8;
+    outer: for (let out = 7; out <= 14; out += 1.5) for (const al of [0, 3, -3, 6, -6, 9, -9, 12, -12]) { const x = wall.mx + wall.nx * out + wall.ex * al, z = wall.mz + wall.nz * out + wall.ez * al; if (clear(x, z, 1.6)) { hx = x; hz = z; break outer; } }
+    LOC.home = walkable(hx, hz); }
   LOC.homeWall = wall; LOC.homeBlock = blk;
   // block numbers painted on every named block
   for (const b of W.buildings) if (b.name && /^(Bl|Bloc)/i.test(b.name) && b.h > 8) addBlockLabel(b);
