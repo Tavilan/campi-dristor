@@ -62,7 +62,7 @@ export const PARODY = [
   [/dristor keba/i, 'DRISTOR KEBABU', 'DIN 1990 · NU ÎNTREBA', '#d7263d', '#ffd23f'],
   [/salad box/i, 'SALAD BOSS', 'MĂCAR ÎNCEARCĂ', '#7ab800', '#fff'],
   [/fornetti/i, 'FORNETTE', 'CALDE (UNEORI)', '#e30613', '#fff'],
-  [/^luca\b/i, 'LUCACIU', 'COVRIGI · PATISERIE', '#f7a600', '#fff'],
+  [/^luca\b|^forneti$/i, 'LUCACIU', 'COVRIGI · PATISERIE', '#f7a600', '#fff'],
   [/paul\b/i, 'PAULA', 'BOULANGERIE DE DRISTOR', '#111', '#e7d8a9'],
   [/spring ?time/i, 'SPRING SUBLIME', 'FAST-FOOD', '#e30613', '#fff'],
   [/ciorbe ?(și|si) ?pl[aă]cinte/i, 'CIORBE ȘI PĂCĂNELE', 'RESTAURANT MOLDOVENESC', '#6b1e1e', '#ffd23f'],
