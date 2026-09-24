@@ -160,7 +160,7 @@ function ctxFor(npc) {
     money, give: (k, label) => { state.inv[k] = label; updateHUD(); SFX.ding(); toast('Ai primit: ' + label); },
     has: (k) => !!state.inv[k], take: (k) => { delete state.inv[k]; updateHUD(); },
     setMission, slots: playSlots, sfx: (n) => SFX[n]?.(),
-    follow: () => { state.follower = true; updateHUD(); voice('zoomies'); bigmsg('MOO DENG E A TA!', '#ff9ecb'); },
+    follow: () => { state.follower = true; updateHUD(); setTimeout(() => campiSay('Hai, Moo Deng, vino după mine!'), 600); bigmsg('MOO DENG E A TA!', '#ff9ecb'); },
     phoneLater: () => setTimeout(() => phone('Tanti Geta', 'Câmpi!!! Zice la știri că a scăpat hipopotamu\' ăla de pe internet, Moo Deng!! E în Parcul IOR, la lac!! Du-te, poate iei recompensă. Și adu-mi și mie o poză cu el.'), 3500),
   };
 }
@@ -500,7 +500,7 @@ function update(dt) {
   const maxV = P.run ? 8.5 : 4.2, targetV = mag * maxV;
   P.speed += (targetV - P.speed) * Math.min(1, dt * 8);
   if (mag > 0.05) {
-    const a = Math.atan2(ix, iz) + camYaw + Math.PI; // input relative to camera
+    const a = Math.atan2(ix, iz) + camYaw; // input relative to camera (W = away from camera)
     P.yaw = lerpAngle(P.yaw, a, Math.min(1, dt * 12));
   }
   let nx = P.x + Math.sin(P.yaw) * P.speed * dt + P.knock.x * dt, nz = P.z + Math.cos(P.yaw) * P.speed * dt + P.knock.y * dt;
@@ -576,7 +576,7 @@ function update(dt) {
     c.s += dir * c.v * dt; if (c.s > c.L) { c.s = c.L; c.dir = -1; } if (c.s < 0) { c.s = 0; c.dir = 1; }
     c.obj.position.set(x, 0, z); c.obj.rotation.y = Math.atan2(fx, fz);
     if (ahead > -2.2 && ahead < 2.4 && lateral < 1.1 && c.v > 4 && P.hurt <= 0 && P.y < 1.5) {
-      P.knock.set(fx * 14, fz * 14); P.vy = 6; P.hurt = 1.2; state.hits++; SFX.hit(); voice('crash'); flash(); money(-10); toast(pick(CAR_HITS), 2500); if (navigator.vibrate) navigator.vibrate(200);
+      P.knock.set(fx * 14, fz * 14); P.vy = 6; P.hurt = 1.2; state.hits++; SFX.hit(); campiSay(pick(['Au! Futu-i!', 'Bă, fii atent pe unde mergi!'])); flash(); money(-10); toast(pick(CAR_HITS), 2500); if (navigator.vibrate) navigator.vibrate(200);
     }
   }
   // ---- dogs
@@ -587,7 +587,7 @@ function update(dt) {
       if (dist < 38 && state.mission === 'metrou') {
         d.v = Math.min(7.4, d.v + dt * 10); d.x += dx / dist * d.v * dt; d.z += dz / dist * d.v * dt; [d.x, d.z] = W.collider.resolve(d.x, d.z, 0.4);
         d.bark -= dt; if (d.bark <= 0) { SFX.bark(); d.bark = rand(0.6, 1.5); }
-        if (dist < 1.1 && d.cool <= 0) { d.cool = 2; P.hurt = .8; state.bites++; SFX.bite(); flash(); money(-5); toast(pick(DOG_BITES)); P.knock.set(dx / dist * 6, dz / dist * 6); if (navigator.vibrate) navigator.vibrate(120); }
+        if (dist < 1.1 && d.cool <= 0) { d.cool = 2; P.hurt = .8; state.bites++; SFX.bite(); campiSay('Lasă-mă, bă, câine!'); flash(); money(-5); toast(pick(DOG_BITES)); P.knock.set(dx / dist * 6, dz / dist * 6); if (navigator.vibrate) navigator.vibrate(120); }
       } else d.v = Math.max(0, d.v - dt * 8);
       d.obj.position.set(d.x, 0, d.z); if (d.v > .1) d.obj.rotation.y = Math.atan2(dx, dz); animateDog(d.obj, d.v, dt, T);
     } else if (d.sleeping) {
@@ -600,7 +600,7 @@ function update(dt) {
     if (c.got) continue; c.obj.rotation.y += dt * 3; c.obj.position.y = 1.2 + Math.sin(T * 3 + c.x) * .12;
     if (Math.hypot(c.x - P.x, c.z - P.z) < 1.3 && Math.abs(P.y + 1 - c.obj.position.y) < 2) {
       c.got = true; c.obj.visible = false; state.coins++; SFX.coin();
-      if (state.lastCoin === 6 && c.k === 7) { bigmsg('SIX SEVEN!'); voice('sixseven'); state.happy = 1.5; money(6); } else toast(`${c.k}! (${state.coins}/20)`);
+      if (state.lastCoin === 6 && c.k === 7) { bigmsg('SIX SEVEN!'); campiSay('Six seven!'); state.happy = 1.5; money(6); } else toast(`${c.k}! (${state.coins}/20)`);
       state.lastCoin = c.k; updateHUD();
       if (state.coins === 20) { bigmsg('TOATE 20!'); money(67); voice('stutter'); }
     }
@@ -645,7 +645,7 @@ function update(dt) {
 }
 async function finale() {
   state.finale = true; SFX.finale(); voice('stutter'); bigmsg('SIX SEVEN!'); state.happy = 6;
-  setTimeout(() => voice('laugh'), 1500);
+  setTimeout(() => campiSay('Am reușit, coaie!'), 1500);
   await new Promise(r => setTimeout(r, 3500));
   state.finale = false; state.done = true; setMission('gata');
   const secs = Math.round((performance.now() - state.t0) / 1000);

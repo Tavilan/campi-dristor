@@ -10,6 +10,12 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
+import ssl
+try:
+    import certifi
+    SSL_CTX = ssl.create_default_context(cafile=certifi.where())
+except ImportError:
+    SSL_CTX = ssl.create_default_context()
 
 DIR = Path(__file__).resolve().parents[1] / 'assets' / 'voice' / 'campi'
 
@@ -45,14 +51,20 @@ def main():
                            'voice_settings': {'stability': 0.45, 'similarity_boost': 0.8, 'style': 0.35}}).encode('utf-8')
         req = Request(url, data=body, method='POST', headers={'xi-api-key': key, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg'})
         try:
-            with urlopen(req, timeout=120) as r:
+            with urlopen(req, timeout=120, context=SSL_CTX) as r:
                 data = r.read()
                 if 'audio/' not in r.headers.get('Content-Type', '') or len(data) < 100:
                     raise ValueError('Răspunsul nu conține audio valid.')
         except HTTPError as e:
-            raise ValueError(f'ElevenLabs HTTP {e.code}. Verifică vocea, cheia, planul și creditele. Nu reîncerc automat.') from None
-        except (URLError, TimeoutError):
-            raise ValueError('Conexiunea a eșuat. Verifică istoricul contului înainte de a repeta.') from None
+            try: detail = e.read().decode('utf-8', 'replace')[:600]
+            except Exception: detail = ''
+            raise ValueError(f'ElevenLabs HTTP {e.code}: {detail}\nVerifică vocea, cheia, planul și creditele. Nu reîncerc automat.') from None
+        except (URLError, TimeoutError) as e:
+            why = str(getattr(e, 'reason', e))
+            hint = ''
+            if 'CERTIFICATE_VERIFY_FAILED' in why:
+                hint = '\nPython de pe Mac nu are certificatele SSL instalate. Rulează: pip3 install certifi   apoi reia comanda.'
+            raise ValueError('Conexiunea a eșuat: ' + why + hint) from None
         with dest.open('xb') as f: f.write(data)
         print('creat:', dest.name)
     write_manifest()
