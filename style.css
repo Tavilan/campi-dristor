@@ -61,3 +61,24 @@ canvas#c { position:fixed; inset:0; width:100%; height:100%; display:block; }
 #loading { font-size:13px; opacity:.8; margin-top:8px; }
 .credit { font-size:11px; opacity:.65; margin-top:14px; }
 #endStats { font-size:17px; line-height:1.6; margin-bottom:10px; }
+#saves { display:flex; flex-direction:column; gap:10px; width:min(92vw,420px); margin:4px 0 6px; }
+.saverow { display:flex; gap:8px; align-items:stretch; }
+.saveslot { flex:1; display:flex; align-items:center; gap:12px; text-align:left; padding:10px 14px; font-size:15px; }
+.saveslot.empty { background:rgba(255,255,255,.85); box-shadow:0 5px 0 rgba(0,0,0,.35); }
+.saveslot:disabled { opacity:.55; }
+.slotn { font-size:26px; font-weight:900; width:30px; text-align:center; }
+.slott { display:flex; flex-direction:column; gap:2px; line-height:1.2; }
+.slott small { font-size:12px; font-weight:700; opacity:.75; }
+.savedel { padding:0 14px; font-size:14px; }
+/* GTA-style loading screen: stylised collage behind, title + save slots over a dark fade at the bottom */
+.screen.splash { background:#120d16; justify-content:flex-end; padding-bottom:calc(env(safe-area-inset-bottom) + 18px); overflow:hidden; }
+.splash-art { position:absolute; inset:0; background:url(assets/splash-portrait.jpg) center top / cover no-repeat; animation:kenburns 26s ease-in-out infinite alternate; z-index:-2; }
+.screen.splash::before { content:''; position:absolute; inset:0; z-index:-1; background:linear-gradient(to bottom, rgba(18,13,22,0) 38%, rgba(18,13,22,.78) 58%, rgba(18,13,22,.96) 78%); }
+.screen.splash { isolation:isolate; }
+.screen.splash .title { margin-bottom:6px; }
+.screen.splash .how { font-size:13px; margin-bottom:10px; text-shadow:0 1px 2px #000; }
+@keyframes kenburns { from { transform:scale(1.02) translate(0,0); } to { transform:scale(1.10) translate(-1.5%, 1.5%); } }
+@media (min-aspect-ratio: 1/1) {
+  .splash-art { background-image:url(assets/splash-landscape.jpg); background-position:center; }
+  .screen.splash::before { background:linear-gradient(to bottom, rgba(18,13,22,0) 30%, rgba(18,13,22,.7) 62%, rgba(18,13,22,.95) 85%); }
+}

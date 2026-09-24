@@ -12,7 +12,9 @@
 <meta property="og:image" content="https://tavilan.github.io/campi-dristor/assets/cover.jpg">
 <meta property="og:url" content="https://tavilan.github.io/campi-dristor/">
 <link rel="icon" href="assets/icon.png">
-<link rel="stylesheet" href="style.css?v=3">
+<link rel="preload" as="image" href="assets/splash-portrait.jpg" media="(max-aspect-ratio: 1/1)">
+<link rel="preload" as="image" href="assets/splash-landscape.jpg" media="(min-aspect-ratio: 1/1)">
+<link rel="stylesheet" href="style.css?v=5">
 <script type="importmap">{ "imports": { "three": "./lib/three.module.min.js" } }</script>
 </head>
 <body>
@@ -60,15 +62,16 @@
   </div>
 </div>
 
-<div id="start" class="screen">
+<div id="start" class="screen splash">
+  <div class="splash-art"></div>
   <div class="title">CÂMPI<br><span>ÎN DRISTOR</span></div>
-  <img id="startFace" src="assets/face-start.png" alt="Câmpi">
   <div class="how">
     <b>Telefon:</b> joystick stânga, trage cu degetul în dreapta ca să te uiți în jur, 🛴 = trotinetă.<br>
     <b>PC:</b> WASD, Shift = fugă, Space = sari, E = vorbește, F = trotinetă, mouse = cameră.<br>
     Harta e Dristorul real, din OpenStreetMap.
   </div>
-  <button class="btn big" id="play">JOACĂ</button>
+  <div id="saves"></div>
+  <button class="btn big hidden" id="play">JOACĂ</button>
   <div id="loading">Se încarcă Dristorul…</div>
   <div class="credit">Făcut cu Claude Opus 5.5 · date hartă © OpenStreetMap contributors (ODbL)</div>
 </div>
@@ -82,6 +85,6 @@
   <div class="credit">Făcut cu Claude Opus 5.5 · date hartă © OpenStreetMap contributors (ODbL)</div>
 </div>
 
-<script type="module" src="js/game.js?v=13"></script>
+<script type="module" src="js/game.js?v=15"></script>
 </body>
 </html>
