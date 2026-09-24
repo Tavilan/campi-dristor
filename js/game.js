@@ -385,7 +385,14 @@ function labelSprite(text, color = '#ffd23f', size = 1) {
 
 // ---------------- Setup world content after the map loads
 async function setup() {
-  W = await buildWorld(scene, 'assets/map.json', { quality: QUALITY });
+  // map2.txt = same data as map.json under a name the GitHub mobile uploader accepts; falls back to map.json
+  // the map can also come split in small pieces (js/map-part-N.js, plain JSON text) - the GitHub mobile uploader rejects the big file
+  let mapUrl = 'assets/map.json';
+  { const parts = [];
+    for (let i = 1; i <= 30; i++) { const r = await fetch(`js/map-part-${i}.js`, { cache: 'no-cache' }).catch(() => null); if (!r || !r.ok) break; parts.push(await r.text()); }
+    if (parts.length) { try { JSON.parse(parts.join('')); mapUrl = URL.createObjectURL(new Blob([parts.join('')], { type: 'application/json' })); } catch (e) { console.warn('map parts incomplete', e); } }
+    if (mapUrl === 'assets/map.json' && await fetch('assets/map2.txt', { method: 'HEAD', cache: 'no-cache' }).then(r => r.ok).catch(() => false)) mapUrl = 'assets/map2.txt'; }
+  W = await buildWorld(scene, mapUrl, { quality: QUALITY });
   setTimeOfDay(false);
   const R = W.radius;
   // --- metro Dristor 1
