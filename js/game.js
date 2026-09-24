@@ -31,7 +31,7 @@ addEventListener('resize', resize); resize();
 // ---------------- State
 const state = { money: 23, inv: {}, mission: 'geta', flags: {}, coins: 0, follower: false, t0: 0, bites: 0, hits: 0, spins: 0, done: false };
 let W = null; const npcs = []; const peds = []; const dogs = []; const cars = []; const coins = [];
-const P = { x: 0, z: 0, y: 0, vy: 0, yaw: 0, speed: 0, run: true, ground: 0, hurt: 0, knock: new THREE.Vector2() };
+const P = { x: 0, z: 0, y: 0, vy: 0, yaw: 0, speed: 0, run: true, ground: 0, hurt: 0, knock: new THREE.Vector2(), scooter: false, lean: 0 };
 let campi, campiHead, campiBody, mooDeng = null, beacon, targetMarker;
 const LOC = {};
 
@@ -235,6 +235,39 @@ $('bJump').onclick = () => input.jump = true;
 $('bRun').onclick = () => { P.run = !P.run; $('bRun').classList.toggle('on', P.run); };
 $('bRun').classList.add('on');
 $('bAct').onclick = (e) => { e.stopPropagation(); input.act = true; };
+$('bScoot').onclick = (e) => { e.stopPropagation(); toggleScooter(); };
+addEventListener('keydown', e => { if ((e.code === 'KeyF' || e.code === 'KeyQ') && !e.repeat) toggleScooter(); });
+
+// ---------------- Electric scooter (trotinetă)
+let scooter = null, scootSound = null;
+function makeScooter() {
+  const g = new THREE.Group(), dark = new THREE.MeshStandardMaterial({ color: '#1d1d1f', roughness: 0.5, metalness: 0.4 }), green = new THREE.MeshStandardMaterial({ color: '#29d17a', roughness: 0.4 });
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.05, 0.85), dark); deck.position.set(0, 0.11, 0.02); g.add(deck);
+  const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.205, 0.02, 0.6), green); stripe.position.set(0, 0.125, 0); g.add(stripe);
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.03, 1.05, 8), dark); stem.position.set(0, 0.6, 0.47); stem.rotation.x = -0.18; g.add(stem);
+  const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.52, 8), dark); bar.rotation.z = Math.PI / 2; bar.position.set(0, 1.1, 0.56); g.add(bar);
+  [-0.26, 0.26].forEach(x => { const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, 0.1, 8), green); grip.rotation.z = Math.PI / 2; grip.position.set(x, 1.1, 0.56); g.add(grip); });
+  const wheels = [0.44, -0.4].map(z => { const w = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.05, 16), dark); w.rotation.z = Math.PI / 2; w.position.set(0, 0.1, z); g.add(w); return w; });
+  const light = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 6), new THREE.MeshBasicMaterial({ color: '#fff8d0' })); light.position.set(0, 1.0, 0.6); g.add(light);
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; }); g.userData.wheels = wheels;
+  return g;
+}
+function toggleScooter(on = !P.scooter) {
+  if (dlg.active || state.finale) return;
+  P.scooter = on; $('bScoot').classList.toggle('on', on);
+  if (!scooter) { scooter = makeScooter(); campi.add(scooter); }
+  scooter.visible = on;
+  if (on) {
+    if (!state.flags.scootInfo) { state.flags.scootInfo = 1; toast('🛴 Trotinetă închiriată: 0,67 lei/minut (plătește Tanti Geta)', 3000); }
+    if (actx && !scootSound) { const o = actx.createOscillator(), g = actx.createGain(); o.type = 'sawtooth'; const f = actx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 900; o.connect(f).connect(g).connect(master); g.gain.value = 0; o.start(); scootSound = { o, g }; }
+  } else if (scootSound) { scootSound.o.stop(); scootSound = null; }
+}
+function scooterCrash() {
+  const hit = P.speed; toggleScooter(false);
+  P.knock.set(-Math.sin(P.yaw) * hit * 0.5, -Math.cos(P.yaw) * hit * 0.5); P.vy = 5; P.hurt = 1.2; P.speed = 0;
+  SFX.hit(); flash(); campiSay(pick(['Au! Futu-i!', 'Bă, fii atent pe unde mergi!'])); toast('Ai intrat cu trotineta în perete. Clasic.', 2200);
+  if (navigator.vibrate) navigator.vibrate(150);
+}
 
 // ---------------- Helpers on the map
 function nearestPoi(kinds, from, { min = 0, max = 1e9, name } = {}) {
@@ -506,15 +539,19 @@ function update(dt) {
   if (input.keys.KeyW || input.keys.ArrowUp) iz = -1; if (input.keys.KeyS || input.keys.ArrowDown) iz = 1;
   if (input.keys.KeyA || input.keys.ArrowLeft) ix = -1; if (input.keys.KeyD || input.keys.ArrowRight) ix = 1;
   let mag = Math.min(1, Math.hypot(ix, iz)); if (talking || state.finale) mag = 0;
-  const maxV = P.run ? 8.5 : 4.2, targetV = mag * maxV;
-  P.speed += (targetV - P.speed) * Math.min(1, dt * 8);
+  const maxV = P.scooter ? 17 : P.run ? 8.5 : 4.2, targetV = mag * maxV;
+  P.speed += (targetV - P.speed) * Math.min(1, dt * (P.scooter ? (targetV > P.speed ? 1.6 : 2.5) : 8));
+  const yawBefore = P.yaw;
   if (mag > 0.05) {
     const a = Math.atan2(ix, iz) + camYaw; // input relative to camera (W = away from camera)
-    P.yaw = lerpAngle(P.yaw, a, Math.min(1, dt * 12));
+    P.yaw = lerpAngle(P.yaw, a, Math.min(1, dt * (P.scooter ? 3.2 : 12)));
   }
+  P.lean += (clamp(((P.yaw - yawBefore + Math.PI * 3) % (Math.PI * 2) - Math.PI) / Math.max(dt, 1e-3) * P.speed * -0.02, -0.35, 0.35) - P.lean) * Math.min(1, dt * 6);
   let nx = P.x + Math.sin(P.yaw) * P.speed * dt + P.knock.x * dt, nz = P.z + Math.cos(P.yaw) * P.speed * dt + P.knock.y * dt;
   P.knock.multiplyScalar(Math.max(0, 1 - dt * 4));
+  const wantX = nx, wantZ = nz;
   [nx, nz] = W.collider.resolve(nx, nz, 0.45, Infinity, P.y);
+  if (P.scooter && P.speed > 9 && Math.hypot(nx - wantX, nz - wantZ) > P.speed * dt * 0.55) scooterCrash();
   const rr = Math.hypot(nx, nz); if (rr > W.radius - 25) { nx *= (W.radius - 25) / rr; nz *= (W.radius - 25) / rr; if (!state.flags.edge) { state.flags.edge = 1; toast('Mai încolo e Titanu\'. Fără pașaport nu treci.'); setTimeout(() => state.flags.edge = 0, 4000); } }
   P.x = nx; P.z = nz;
   // jump / gravity (can land on garages and parked cars)
@@ -522,9 +559,11 @@ function update(dt) {
   if (input.jump && P.y <= P.ground + 0.02 && !talking) { P.vy = 9.5; SFX.jump(); }
   input.jump = false;
   P.vy -= 22 * dt; P.y += P.vy * dt; if (P.y < P.ground) { P.y = P.ground; P.vy = 0; }
-  campi.position.set(P.x, P.y, P.z); campi.rotation.y = P.yaw;
+  campi.position.set(P.x, P.y + (P.scooter ? 0.13 : 0), P.z); campi.rotation.set(0, P.yaw, P.scooter ? P.lean : 0);
+  if (scooter && P.scooter) scooter.userData.wheels.forEach(w => w.rotation.x += P.speed * dt / 0.1);
+  if (scootSound) { scootSound.o.frequency.value = 90 + P.speed * 28; scootSound.g.gain.value = muted ? 0 : 0.03 + P.speed * 0.004; }
   { // blend idle / walk / run by speed (real mocap clips)
-    const air = P.y > P.ground + 0.05, v = air ? 0 : P.speed, A = campiBody.actions;
+    const air = P.y > P.ground + 0.05, v = air || P.scooter ? 0 : P.speed, A = campiBody.actions;
     const wWalk = clamp(v / 2.2, 0, 1) * (1 - clamp((v - 4.2) / 2.5, 0, 1)), wRun = clamp((v - 4.2) / 2.5, 0, 1), wIdle = 1 - Math.max(wWalk, wRun);
     A.idle.setEffectiveWeight(wIdle); A.walk.setEffectiveWeight(wWalk); A.run.setEffectiveWeight(wRun);
     A.walk.timeScale = clamp(v / 1.9, 0.6, 1.6); A.run.timeScale = clamp(v / 6.5, 0.8, 1.4);
@@ -552,7 +591,7 @@ function update(dt) {
     if (n.hippo) {
       if (state.follower && n.id === 'moodeng') {
         const bx = P.x - Math.sin(P.yaw) * 2.6, bz = P.z - Math.cos(P.yaw) * 2.6; const dx = bx - n.x, dz = bz - n.z, d = Math.hypot(dx, dz);
-        const sp = d > 1 ? Math.min(d * 3, 10) : 0; if (d > 0.1) { n.x += dx / d * sp * dt; n.z += dz / d * sp * dt; }
+        const sp = d > 1 ? Math.min(d * 3, P.scooter ? 22 : 10) : 0; if (d > 0.1) { n.x += dx / d * sp * dt; n.z += dz / d * sp * dt; }
         [n.x, n.z] = W.collider.resolve(n.x, n.z, 0.7); if (d > 30) { n.x = bx; n.z = bz; }
         n.yaw = lerpAngle(n.yaw, Math.atan2(P.x - n.x, P.z - n.z), dt * 6); animateHippo(n.obj, sp, dt);
       } else { animateHippo(n.obj, Math.sin(T) > .6 ? 2 : 0, dt); n.yaw += Math.sin(T * .7) * dt * .5; }
@@ -626,7 +665,7 @@ function update(dt) {
   // ---- camera
   if (!talking && performance.now() - lastLook > 1800 && P.speed > 1) camYaw = lerpAngle(camYaw, P.yaw + Math.PI, dt * 1.2);
   camTarget.set(P.x, P.y + 1.7, P.z);
-  let dist = camDist;
+  let dist = camDist + (P.scooter ? clamp(P.speed / 17, 0, 1) * 2.5 : 0);
   if (talking && dlg.npc) { // cinematic over-the-shoulder shots; Câmpi's lines show his face
     const n = dlg.npc, npos = n.obj && !n.window ? n.obj.position : null;
     const nx = n.window ? n.anchor.x : npos ? npos.x : n.x, nz = n.window ? n.anchor.z : npos ? npos.z : n.z, ny = n.window ? n.anchor.y : (n.hippo ? 0.9 : 2.0);
