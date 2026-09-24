@@ -1,0 +1,111 @@
+// GTA-style parody names for the real shops found in OpenStreetMap (matched on brand or name).
+// Each entry: [regex, title, subtitle, background, text colour, cross (pharmacy)]
+export const PARODY = [
+  // supermarkets / convenience
+  [/mega ?image/i, 'MEGA IMAGINE', 'PREȚURI MEGA · PORȚII MINI', '#1a1a1a', '#ff7a00'],
+  [/shop ?& ?go/i, 'SHOP & STOP', 'DESCHIS CÂND AVEM CHEF', '#e30613', '#fff'],
+  [/carrefour/i, 'CAREFURĂ', 'MARKET · CASA DE MARCAT 1 DIN 9', '#0b4ea2', '#fff'],
+  [/kaufland/i, 'CAUTĂLAND', 'GĂSEȘTI TOT, MAI PUȚIN CASIERĂ', '#e10915', '#fff'],
+  [/lidl/i, 'LEDL', 'SĂPTĂMÂNA TROTINETEI', '#0050aa', '#fff200'],
+  [/penny/i, 'PENNYLESS', 'DISCOUNT LA DISPERARE', '#cd1719', '#fff'],
+  [/profi/i, 'PROFIT', 'AL LOR, NU AL TĂU', '#e2001a', '#fff'],
+  [/auchan/i, 'OȘAN', 'HIPER · SUPER · MEGA · COADĂ', '#e2001a', '#fff'],
+  [/5 ?to ?go/i, '6·7 TO GO', 'CAFEA LA 6,7 LEI', '#ffd400', '#111'],
+  [/froo/i, 'FRUU', 'MINI MARKET · MAXI PREȚ', '#00a651', '#fff'],
+  [/la doi pa[sș]i/i, 'LA ZECE PAȘI', 'DAR MERITĂ', '#f7a600', '#fff'],
+  [/annabella/i, 'ANABELLA-BELLA', 'MARKET DE CARTIER', '#c8102e', '#fff'],
+  // pharmacies
+  [/dr\.? ?max/i, 'Dr. TAX', 'FARMACIE · TAXĂ DE RESPIRAT', '#00843d', '#fff', 1],
+  [/catena/i, 'CÂTEVA', 'FARMACIE · CÂTEVA PASTILE', '#e4032e', '#fff', 1],
+  [/help ?net/i, 'HELP ME NET', 'FARMACIE · AJUTOR!', '#0072bc', '#fff', 1],
+  [/sensiblu/i, 'INSENSIBLU', 'FARMACIE FĂRĂ SENTIMENTE', '#003f87', '#fff', 1],
+  [/farmacia dona|^dona$/i, 'FARMACIA DOAMNA', 'CU TANTI LA GHIȘEU', '#009fe3', '#fff', 1],
+  [/farmacia tei/i, 'FARMACIA TEIUL', 'CEAIURI PENTRU ORICE', '#78b928', '#fff', 1],
+  [/ropharma/i, 'ROFARMACHE', 'ÎNTREABĂ-L PE FARMACHE', '#e30613', '#fff', 1],
+  [/benu/i, 'BENU-BENE', 'FARMACIE', '#8cc63f', '#fff', 1],
+  // betting
+  [/superbet/i, 'SUPERBETIV', 'PARIAZĂ SALARIUL', '#e3001b', '#fff'],
+  [/stanley ?bet/i, 'STANLEY PIERD', 'COTE MARI · BANI MICI', '#003a70', '#ffd200'],
+  [/fortuna/i, 'FORTUNĂ-MĂ', 'PARIURI · RUGĂCIUNI', '#ffcc00', '#111'],
+  [/betano/i, 'BETANU', 'CĂ N-AI', '#ff6600', '#fff'],
+  [/max ?bet/i, 'MAXBEȚIE', 'PARIURI · BERE', '#111', '#ffcc00'],
+  [/casa pariurilor/i, 'CASA PIERDERILOR', 'PONTUL ZILEI: 6-7', '#005baa', '#fff'],
+  [/admiral/i, 'AMIRALUL PIERDUT', 'SLOTS', '#002d72', '#ffd200'],
+  [/mr ?bit/i, 'MR. BITUL', 'PARIURI', '#6b2c91', '#fff'],
+  [/game ?world/i, 'GAME WORRY', 'SLOTS · JACKPOT', '#111', '#ff2d55'],
+  // banks
+  [/transilvania/i, 'BANCA TRANSILVAMPIRIA', 'ÎȚI SUGE DOBÂNDA', '#fff', '#e4032e'],
+  [/raif+eisen|raifeissen/i, 'RĂFUIALĂ BANK', 'CREDITE CU ZÂMBET', '#fff200', '#111'],
+  [/\bbrd\b/i, 'BRRR-D', 'BANCA LA RECE', '#e3001b', '#fff'],
+  [/\bbcr\b/i, 'BĂCĂR BANK', 'NUMĂRUL DE ORDINE 413', '#005baa', '#fff'],
+  [/\bing\b/i, 'INGRAT BANK', 'DO YOUR THING', '#ff6200', '#fff'],
+  [/\bcec\b/i, 'CE-CE BANK', 'CE? CE VREI?', '#004f9f', '#fff'],
+  [/unicredit/i, 'UNIDEBIT', 'BANCA', '#e2001a', '#fff'],
+  [/alpha bank/i, 'ALFA BANC', 'BANCA', '#0d4a9b', '#fff'],
+  [/\botp\b/i, 'OPT BANK', 'DIN ZECE', '#52ae32', '#fff'],
+  [/garanti/i, 'GARANTAT BANK', 'NU GARANTĂM', '#00843d', '#fff'],
+  [/libra ?bank|libra internet/i, 'LIBRA-TE BANK', 'BANCA', '#003d7c', '#fff'],
+  [/\bstb\b/i, 'STB — ȘTIM TOT BANC', 'AȘTEPTAȚI 40 MIN', '#003a70', '#fff'],
+  // telecom
+  [/vodafone/i, 'VODAFUN', 'SEMNAL LA GEAM', '#e60000', '#fff'],
+  [/orange/i, 'PORTOCALA', 'ABONAMENT PE VIAȚĂ', '#111', '#ff7900'],
+  [/telekom/i, 'TELECOMA', 'SERVICE CLIENȚI: MÂINE', '#e20074', '#fff'],
+  [/\bdigi\b/i, 'DIGGY', 'NET MAI RAPID CA METROUL', '#1d4f91', '#fff'],
+  // food
+  [/mcdonald/i, "McDRISTOR'S", 'CARTOFI PRIETENI', '#da291c', '#ffc72c'],
+  [/\bkfc\b/i, 'KFD', 'KENTUCKY FRIED DRISTOR', '#a3080c', '#fff'],
+  [/starbucks/i, 'STARBAC', 'CAFEA LA PREȚ DE BAC', '#00704a', '#fff'],
+  [/subway/i, 'SUBWAIUL', 'SANDVIȘURI', '#008c15', '#ffc600'],
+  [/domino/i, "DOMINOU'S", 'PIZZA CĂZUTĂ', '#006491', '#fff'],
+  [/pizza hut/i, 'PIZZA HAT', 'CU PĂLĂRIE', '#c8102e', '#fff'],
+  [/nordsee/i, 'NORDSEA', 'PEȘTE DIN LACUL IOR', '#003a70', '#fff'],
+  [/dristor keba/i, 'DRISTOR KEBABU', 'DIN 1990 · NU ÎNTREBA', '#d7263d', '#ffd23f'],
+  [/salad box/i, 'SALAD BOSS', 'MĂCAR ÎNCEARCĂ', '#7ab800', '#fff'],
+  [/fornetti/i, 'FORNETTE', 'CALDE (UNEORI)', '#e30613', '#fff'],
+  [/^luca\b/i, 'LUCACIU', 'COVRIGI · PATISERIE', '#f7a600', '#fff'],
+  [/paul\b/i, 'PAULA', 'BOULANGERIE DE DRISTOR', '#111', '#e7d8a9'],
+  [/spring ?time/i, 'SPRING SUBLIME', 'FAST-FOOD', '#e30613', '#fff'],
+  [/ciorbe ?(și|si) ?pl[aă]cinte/i, 'CIORBE ȘI PĂCĂNELE', 'RESTAURANT MOLDOVENESC', '#6b1e1e', '#ffd23f'],
+  // fuel
+  [/petrom/i, 'PETROMAN', 'BENZINĂ · HOT-DOG', '#1b3f8b', '#ffd200'],
+  [/\bomv\b/i, 'OMG', 'CAFEA · BENZINĂ', '#003a70', '#fff'],
+  [/rompetrol/i, 'ROMPETROLL', 'CARBURANT', '#e2001a', '#fff'],
+  [/lukoil/i, 'LUKOILĂ', 'BENZINĂ', '#e2001a', '#fff'],
+  [/\bmol\b/i, 'MOLL', 'NU E MALL', '#e2001a', '#fff'],
+  [/socar/i, 'SOCKAR', 'CARBURANT', '#00549f', '#fff'],
+  // retail
+  [/pepco/i, 'PEPCHO', 'TOTUL LA 6,7 LEI', '#111', '#fff'],
+  [/animax/i, 'ANIMAXIM', 'PET SHOP', '#e30613', '#fff'],
+  [/noriel/i, 'NOROIEL', 'JUCĂRII', '#e30613', '#fff'],
+  [/c[aă]rture[sș]ti/i, 'CĂRȚUCI', 'CĂRȚI · CEAI · CANAPELE', '#7c1b2f', '#fff'],
+  [/world class/i, 'WORLD CRASH', 'SALĂ · FĂRĂ SCUZE', '#111', '#c9a227'],
+  [/jolidon/i, 'JOLIDOR', 'LENJERIE', '#ec008c', '#fff'],
+  [/douglas/i, 'DUGLAS', 'PARFUMURI', '#111', '#9bd3dd'],
+  [/altex/i, 'ALTEXT', 'ELECTRO', '#e30613', '#fff'],
+  [/media ?galaxy/i, 'MEDIA GALAXIE', 'ELECTRO', '#e30613', '#fff'],
+  [/flanco/i, 'FLANCO-LANCO', 'ELECTRO', '#e30613', '#fff'],
+  [/dedeman/i, 'DEDEMANIA', 'BRICOLAJ', '#ffcc00', '#0b3d91'],
+  [/brico/i, 'BRICODEPRESIE', 'BRICOLAJ', '#f39200', '#fff'],
+  [/jysk/i, 'JUSK', 'MOBILĂ', '#143c8c', '#fff'],
+  [/sephora/i, 'SEFORA', 'COSMETICE', '#111', '#fff'],
+  [/h ?& ?m/i, 'H & N', 'FASHION', '#e50010', '#fff'],
+  [/deichmann/i, 'DEICHMANN-MAN', 'PANTOFI', '#009a3d', '#fff'],
+  [/\bccc\b/i, 'CCCC', 'PANTOFI', '#e30613', '#fff'],
+  [/sportisimo/i, 'SPORTISIMOS', 'SPORT', '#0055a5', '#fff'],
+  [/intersport/i, 'INTERSPORTIV', 'SPORT', '#0b3d91', '#fff'],
+  [/pandora/i, 'PANDORA-BOX', 'BIJUTERII', '#111', '#fff'],
+  [/fan ?courier/i, 'FAN CURIERUL', 'VINE MÂINE, POATE', '#004e9e', '#ffd200'],
+  [/sameday/i, 'NEXTDAY', 'EASYBOX', '#ff0000', '#fff'],
+  [/posta|poșta/i, 'POȘTA ROMÂNĂ', 'AVIZ: VENIȚI MÂINE', '#003a70', '#ffd200'],
+  // malls
+  [/park ?lake/i, 'PARK LEAK', 'SHOPPING CITY', '#fff', '#1b4f9c'],
+  [/bucure[sș]ti mall/i, 'BUCUREȘTI MOLL', 'SHOPPING', '#fff', '#c8102e'],
+];
+
+export function parodyFor(...names) {
+  for (const n of names) {
+    if (!n) continue;
+    for (const [re, t, s, bg, fg, cross] of PARODY) if (re.test(n)) return [t, s, bg, fg, cross];
+  }
+  return null;
+}

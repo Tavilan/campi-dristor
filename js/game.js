@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { buildWorld, Collider, canvasTex, pick, rand, signMaterial } from './world.js';
+import { buildDetails } from './details.js';
 import { makeHuman, simpleHead, makeCampiHead, makeCampiBody, makeRigCharacter, animateHuman, makeMooDeng, animateHippo, makeDog, animateDog, makeCar } from './characters.js';
 import { MISSIONS, NPC_DEFS, PED_LINES, DOG_BITES, CAR_HITS } from './content.js';
 import { SPEAKERS, speakerKey } from './voices.js';
@@ -54,6 +55,7 @@ let W = null; const npcs = []; const peds = []; const dogs = []; const cars = []
 const P = { x: 0, z: 0, y: 0, vy: 0, yaw: 0, speed: 0, run: true, ground: 0, hurt: 0, knock: new THREE.Vector2(), scooter: false, lean: 0 };
 let campi, campiHead, campiBody, mooDeng = null, beacon, targetMarker;
 const LOC = {};
+let DET = null, detT = 0;
 
 // ---------------- Audio
 let actx = null, master = null, muted = false, ttsOn = true, roVoice = null, voiceBus = null, analyser = null, lipBuf = null, campiLines = {}, npcLines = {}, npcBus = null, npcSrc = null, npcTok = 0, lip = 0;
@@ -389,7 +391,9 @@ async function setup() {
   // --- metro Dristor 1
   const metroP = nearestPoi(['subway'], [0, 0], { name: /Dristor 1/ }) || nearestPoi(['subway'], [0, 0]) || { x: 0, z: 0 };
   LOC.metro = walkable(metroP.x, metroP.z);
-  for (const p of W.pois.filter(p => p.k === 'subway')) addMetroEntrance(p);
+  DET = buildDetails(W, { quality: QUALITY });
+  { const d1 = DET.metroOut.find(m => /Dristor 1/.test(m.name || '')); if (d1) LOC.metro = walkable(d1.x, d1.z); }
+  for (const m of DET.metroOut) if (m.name && /Dristor/.test(m.name)) { const l = labelSprite(m.name.toUpperCase(), '#ffffff', 1.1); l.position.set(m.x, 5, m.z); scene.add(l); }
   // --- Câmpi's block: a named "Bl." building 70-260 m from the metro
   let blk = null, bd = 1e9;
   for (const b of W.buildings) { if (!/^Bl/i.test(b.name || '') || b.h < 12) continue; const c = centroid(b.pts); const d = Math.hypot(c[0] - LOC.metro[0], c[1] - LOC.metro[1]); if (d > 70 && d < 260 && d < bd) { bd = d; blk = b; } }
@@ -429,7 +433,7 @@ async function setup() {
   npcs.push({ id: 'moodeng', def: NPC_DEFS.moodeng, name: 'Moo Deng', obj: mooDeng, x: LOC.moodeng[0], z: LOC.moodeng[1], yaw: 0, hippo: true, r: 3.5 });
   // --- Market stalls at Piața Râmnicu Sărat
   const market = W.areas.find(a => a.k === 'market' && /Râmnicu/.test(a.n || '')) || W.areas.find(a => a.k === 'market');
-  if (market) addMarket(market);
+  if (market) { const l = labelSprite((market.n || 'PIAȚA').toUpperCase(), '#ffffff', 1.3); const c = centroid(market.pts); l.position.set(c[0], 7, c[1]); scene.add(l); }
   // --- Câmpi
   campiBody = await makeCampiBody(); campi = campiBody.root; scene.add(campi);
   { const hp = new THREE.Group(); hp.position.set(0, 0.04, 0.035); campiBody.headInner.add(hp); campiHead = await makeCampiHead(hp, 0.185); }
@@ -837,6 +841,7 @@ $('share').onclick = () => {
 function loop() {
   const dt = Math.min(clock.getDelta(), 1 / 20);
   if (running) update(dt);
+  if (DET && (detT -= dt) <= 0) { detT = 0.4; DET.cull(camera.position); }
   renderer.render(scene, camera);
   requestAnimationFrame(loop);
 }
@@ -854,4 +859,4 @@ $('play').onclick = () => {
   voice('start');
   setTimeout(() => phone('Mama', 'Câmpi, unde ești?? Treci pe la Tanti Geta, că te-a căutat. Stă la geam, ca de obicei. Și ia pâine!'), 1200);
 };
-window.__g = { setTimeOfDay: (n) => setTimeOfDay(n), camPos, camTarget, setCam(y, p, d) { camYaw = y; camPitch = p; if (d) camDist = d; lastLook = performance.now() + 1e6; }, state, P, npcs, LOC, setMission, talkTo, get W() { return W; }, camera, scene, renderer, update, input };
+window.__g = { setTimeOfDay: (n) => setTimeOfDay(n), camPos, camTarget, setCam(y, p, d) { camYaw = y; camPitch = p; if (d) camDist = d; lastLook = performance.now() + 1e6; }, state, P, npcs, LOC, setMission, talkTo, get W() { return W; }, get DET() { return DET; }, camera, scene, renderer, update, input };

@@ -1,5 +1,6 @@
 // Builds the 3D Dristor from assets/map.json (converted from OpenStreetMap).
 import * as THREE from 'three';
+import { parodyFor } from './brands.js';
 
 export const rand = (a, b) => a + Math.random() * (b - a);
 export const pick = (arr) => arr[(Math.random() * arr.length) | 0];
@@ -67,10 +68,9 @@ function facadeAtlas(variant) {
 const groundTex = canvasTex(512, 128, (g, w, h) => {
   g.fillStyle = '#9e978b'; g.fillRect(0, 0, w, h);
   for (let i = 0; i < 700; i++) { g.fillStyle = `rgba(${Math.random() < .5 ? '0,0,0' : '255,255,255'},${Math.random() * .08})`; g.fillRect(Math.random() * w, Math.random() * h, 3, 3); }
-  // scara (entrance) at the left of the tile
-  g.fillStyle = '#5b4a3c'; g.fillRect(24, 34, 58, 94); g.fillStyle = '#7fa0b3'; g.fillRect(30, 40, 20, 56); g.fillRect(56, 40, 20, 56);
-  g.fillStyle = '#2b2b2b'; g.fillRect(86, 60, 8, 14); g.fillStyle = '#c9c1b2'; g.fillRect(14, 26, 80, 8);
-  g.fillStyle = '#e8e2d4'; g.font = 'bold 14px sans-serif'; g.fillText('SC. ' + pick(['A', 'B', 'C', '1', '2']), 30, 22);
+  // (scara entrances are real 3D doors with canopies now) - a basement window and a drain pipe instead
+  g.fillStyle = '#3a3a3a'; g.fillRect(30, 96, 60, 18); g.fillStyle = '#6b6b6b'; for (let k = 0; k < 5; k++) g.fillRect(32 + k * 12, 96, 2, 18);
+  g.fillStyle = '#7a7a72'; g.fillRect(104, 0, 6, 128);
   // cutii postale / grafitti
   g.fillStyle = '#c0392b'; g.font = 'italic bold 20px sans-serif'; if (Math.random() < .7) g.fillText(pick(['FCSB', 'DINAMO', 'CÂMPI 67', 'SIX SEVEN', 'Te iubesc Ana']), 140, 118);
   // barred windows
@@ -116,9 +116,10 @@ const SIGN = {
 };
 const signCache = {};
 export function signMaterial(kind) {
-  const key = SIGN[kind] ? kind : 'default';
+  const spec = Array.isArray(kind) ? kind : SIGN[kind] || SIGN.default;
+  const key = spec.join('|');
   if (signCache[key]) return signCache[key];
-  const [t, s, bg, fg, cross] = SIGN[key];
+  const [t, s, bg, fg, cross] = spec;
   const tex = canvasTex(512, 128, (g, w, h) => {
     g.fillStyle = bg; g.fillRect(0, 0, w, h);
     g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 6; g.strokeRect(3, 3, w - 6, h - 6);
@@ -217,27 +218,58 @@ export async function buildWorld(scene, url = 'assets/map.json', opts = {}) {
   const M = await (await fetch(url)).json();
   const D = (a) => a.map(([x, z]) => [x / 10, z / 10]);
   const collider = new Collider();
+  // road proximity (props must never end up on the carriageway or across a footpath)
+  const SGW = 16, segCar = new Map(), segFoot = new Map(), FOOT = new Set(['footway', 'path', 'steps', 'pedestrian', 'cycleway', 'corridor']);
+  for (const r of M.roads) { const pts = D(r.p), G = FOOT.has(r.k) ? segFoot : segCar, hw = r.w / 2;
+    for (let i = 0; i < pts.length - 1; i++) { const [x1, z1] = pts[i], [x2, z2] = pts[i + 1], sg = { x1, z1, x2, z2, hw, w: r.w };
+      for (let gx = Math.floor((Math.min(x1, x2) - hw - 4) / SGW); gx <= Math.floor((Math.max(x1, x2) + hw + 4) / SGW); gx++)
+        for (let gz = Math.floor((Math.min(z1, z2) - hw - 4) / SGW); gz <= Math.floor((Math.max(z1, z2) + hw + 4) / SGW); gz++) { const k = gx * 10000 + gz; if (!G.has(k)) G.set(k, []); G.get(k).push(sg); } } }
+  const segDist = (G, x, z) => { const L = G.get(Math.floor(x / SGW) * 10000 + Math.floor(z / SGW)); if (!L) return 99; let best = 99;
+    for (const s of L) { const ex = s.x2 - s.x1, ez = s.z2 - s.z1, L2 = ex * ex + ez * ez || 1; let t = ((x - s.x1) * ex + (z - s.z1) * ez) / L2; t = t < 0 ? 0 : t > 1 ? 1 : t; const d = Math.hypot(x - s.x1 - ex * t, z - s.z1 - ez * t) - s.hw; if (d < best) best = d; } return best; };
+  const carriageDist = (x, z) => segDist(segCar, x, z), footDist = (x, z) => segDist(segFoot, x, z);
+  const offRoad = (x, z, r = 0.5) => carriageDist(x, z) > r && footDist(x, z) > r * 0.5;
+  function nearestCarriage(x, z) { let best = null; for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) { const L = segCar.get((Math.floor(x / SGW) + dx) * 10000 + Math.floor(z / SGW) + dz); if (!L) continue;
+    for (const s of L) { const ex = s.x2 - s.x1, ez = s.z2 - s.z1, L2 = ex * ex + ez * ez || 1; let t = ((x - s.x1) * ex + (z - s.z1) * ez) / L2; t = t < 0 ? 0 : t > 1 ? 1 : t; const px = s.x1 + ex * t, pz = s.z1 + ez * t, d = Math.hypot(x - px, z - pz); if (!best || d < best.d) best = { d, px, pz, s }; } } return best; }
   const world = new THREE.Group(); scene.add(world);
   const R = M.radius;
 
   // Ground
-  const groundTex = canvasTex(256, 256, (g, w, h) => {
-    g.fillStyle = '#a9a48f'; g.fillRect(0, 0, w, h);
-    for (let i = 0; i < 1600; i++) { g.fillStyle = pick(['#9c9782', '#b3ae98', '#8f9a6e', '#a29d86']); g.fillRect(Math.random() * w, Math.random() * h, 3, 3); }
-  }, [R / 6, R / 6]);
-  const ground = new THREE.Mesh(new THREE.CircleGeometry(R + 400, 64), new THREE.MeshStandardMaterial({ map: groundTex, roughness: 1 }));
+  // worn grass / trampled dirt between the blocks: a macro texture painted from the map (dusty verges along roads,
+  // trampled dirt around every block, greener patches), multiplied by a tiling detail texture in the shader
+  const RG = R + 400, GS = opts.quality === 'low' ? 1024 : 2048;
+  const toPx = (x, z) => [(x + RG) / (2 * RG) * GS, (z + RG) / (2 * RG) * GS], kpx = GS / (2 * RG);
+  const macroTex = canvasTex(GS, GS, (g) => {
+    g.fillStyle = '#7f7e57'; g.fillRect(0, 0, GS, GS);
+    const pal = ['#6f7f46', '#86864f', '#8c7e60', '#77864a', '#948a6c', '#6a7743'];
+    for (let i = 0; i < GS * 3; i++) { const x = Math.random() * GS, y = Math.random() * GS, r = 3 + Math.random() * 26;
+      const gr = g.createRadialGradient(x, y, 0, x, y, r); const c = pal[(Math.random() * pal.length) | 0]; gr.addColorStop(0, c); gr.addColorStop(1, c + '00'); g.globalAlpha = 0.35; g.fillStyle = gr; g.fillRect(x - r, y - r, 2 * r, 2 * r); }
+    g.globalAlpha = 1; g.lineJoin = 'round'; g.lineCap = 'round';
+    g.strokeStyle = 'rgba(158,148,122,.55)';
+    for (const r of M.roads) { const pts = D(r.p); g.lineWidth = Math.max(2, (r.w + (r.w >= 7 ? 9 : 3)) * kpx); g.beginPath(); pts.forEach(([x, z], i) => { const [px, py] = toPx(x, z); i ? g.lineTo(px, py) : g.moveTo(px, py); }); g.stroke(); }
+    g.strokeStyle = 'rgba(140,128,100,.6)'; g.lineWidth = Math.max(2, 7 * kpx);
+    for (const b of M.buildings) { const pts = D(b.p); g.beginPath(); pts.forEach(([x, z], i) => { const [px, py] = toPx(x, z); i ? g.lineTo(px, py) : g.moveTo(px, py); }); g.closePath(); g.stroke(); }
+  });
+  const detailTex = canvasTex(256, 256, (g, w, h) => { g.fillStyle = '#d0d0d0'; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 5000; i++) { const v = 150 + Math.random() * 105 | 0; g.fillStyle = `rgb(${v},${v},${v})`; g.fillRect(Math.random() * w, Math.random() * h, 1 + Math.random() * 2, 1 + Math.random() * 3); }
+    for (let i = 0; i < 60; i++) { g.fillStyle = 'rgba(90,80,60,.25)'; g.beginPath(); g.ellipse(Math.random() * w, Math.random() * h, 3 + Math.random() * 8, 2 + Math.random() * 5, Math.random() * 3, 0, 7); g.fill(); } }, [1, 1]);
+  const groundMacro = new THREE.MeshStandardMaterial({ map: macroTex, roughness: 1 });
+  groundMacro.onBeforeCompile = (sh) => { sh.uniforms.detailMap = { value: detailTex }; sh.uniforms.detailRep = { value: RG / 3.5 };
+    sh.fragmentShader = 'uniform sampler2D detailMap; uniform float detailRep;\n' + sh.fragmentShader.replace('#include <map_fragment>', '#include <map_fragment>\n diffuseColor.rgb *= texture2D(detailMap, vMapUv * detailRep).rgb * 1.25;'); };
+  const ground = new THREE.Mesh(new THREE.CircleGeometry(RG, 64), groundMacro);
   ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; world.add(ground);
 
   // Areas (parks, water, parking, markets...)
-  const AREA_COL = { park: '#6fae4f', grass: '#86b85e', play: '#c9a27a', pitch: '#4f9a4a', water: '#4d8fb5', parking: '#6d6a66', market: '#b8a991', retail: '#a8a39a', garages: '#8f8a80', school: '#b9ad8f', rail: '#8b8176', construction: '#b39b76' };
-  const AREA_Y = { water: 0.03, park: 0.05, grass: 0.05, play: 0.06, pitch: 0.07, parking: 0.04, market: 0.045, retail: 0.035, garages: 0.035, school: 0.035, rail: 0.035, construction: 0.04 };
+  const AREA_COL = { wood: '#5e9443', wetland: '#7f9c5a', dog: '#9a8f6e', pool: '#5fb3d6', pier: '#8a6a48', park: '#6fae4f', grass: '#86b85e', play: '#c9a27a', pitch: '#4f9a4a', water: '#4d8fb5', parking: '#6d6a66', market: '#b8a991', retail: '#a8a39a', garages: '#8f8a80', school: '#b9ad8f', rail: '#8b8176', construction: '#b39b76' };
+  const AREA_Y = { wood: 0.05, wetland: 0.045, dog: 0.05, pool: 0.08, pier: 0.3, water: 0.03, park: 0.05, grass: 0.05, play: 0.06, pitch: 0.07, parking: 0.04, market: 0.045, retail: 0.035, garages: 0.035, school: 0.035, rail: 0.035, construction: 0.04 };
   { const pos = [], col = [];
     for (const a of M.areas) {
       const pts = D(a.p); if (pts.length < 3) continue;
       const contour = pts.map(([x, z]) => new THREE.Vector2(x, z));
-      let tris; try { tris = THREE.ShapeUtils.triangulateShape(contour, []); } catch (e) { continue; }
+      const holes = (a.h || []).map(h => D(h).map(([x, z]) => new THREE.Vector2(x, z)));
+      let tris; try { tris = THREE.ShapeUtils.triangulateShape(contour, holes); } catch (e) { continue; }
+      const all = contour.concat(...holes);
       const y = AREA_Y[a.k] ?? 0.03, c = colorArr(AREA_COL[a.k] || '#999', 0.04);
-      for (const t of tris) for (const i of [t[0], t[2], t[1]]) { pos.push(contour[i].x, y, contour[i].y); col.push(...c); }
+      for (const t of tris) for (const i of [t[0], t[2], t[1]]) { pos.push(all[i].x, y, all[i].y); col.push(...c); }
       if (a.k === 'water') collider.add(pts, { water: true });
     }
     const m = new THREE.Mesh(geo(pos, null, col), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, side: THREE.DoubleSide }));
@@ -294,7 +326,14 @@ export async function buildWorld(scene, url = 'assets/map.json', opts = {}) {
             mpos.push(ax - nx * hw - ux * hl, .21, az - nz * hw - uz * hl, ax + nx * hw - ux * hl, .21, az + nz * hw - uz * hl, ax + nx * hw + ux * hl, .21, az + nz * hw + uz * hl,
               ax - nx * hw - ux * hl, .21, az - nz * hw - uz * hl, ax + nx * hw + ux * hl, .21, az + nz * hw + uz * hl, ax - nx * hw + ux * hl, .21, az - nz * hw + uz * hl); }
         } } }
-    const rm = new THREE.Mesh(geo(pos, null, col), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, side: THREE.DoubleSide }));
+    const asphalt = canvasTex(512, 512, (g, w, h) => { g.fillStyle = '#e4e4e4'; g.fillRect(0, 0, w, h);
+      for (let i = 0; i < 9000; i++) { const v = 170 + Math.random() * 85 | 0; g.fillStyle = `rgb(${v},${v},${v})`; g.fillRect(Math.random() * w, Math.random() * h, 1 + Math.random() * 2, 1 + Math.random() * 2); }
+      for (let i = 0; i < 7; i++) { g.fillStyle = `rgba(40,40,40,${0.12 + Math.random() * 0.15})`; const x = Math.random() * w, y = Math.random() * h; g.fillRect(x, y, 30 + Math.random() * 90, 20 + Math.random() * 60); }   // patches (petice)
+      g.strokeStyle = 'rgba(20,20,20,.45)'; for (let i = 0; i < 14; i++) { g.lineWidth = 0.8 + Math.random(); g.beginPath(); let x = Math.random() * w, y = Math.random() * h; g.moveTo(x, y); for (let k = 0; k < 8; k++) { x += (Math.random() - .5) * 40; y += (Math.random() - .5) * 40; g.lineTo(x, y); } g.stroke(); }
+      for (let i = 0; i < 4; i++) { g.fillStyle = 'rgba(30,30,30,.35)'; g.beginPath(); g.ellipse(Math.random() * w, Math.random() * h, 6 + Math.random() * 10, 4 + Math.random() * 6, Math.random() * 3, 0, 7); g.fill(); }   // gropi
+    }, [1, 1]);
+    const rgeo = geo(pos, null, col); { const P = rgeo.attributes.position.array, uvs = new Float32Array(P.length / 3 * 2); for (let i = 0, j = 0; i < P.length; i += 3, j += 2) { uvs[j] = P[i] / 9; uvs[j + 1] = P[i + 2] / 9; } rgeo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2)); }
+    const rm = new THREE.Mesh(rgeo, new THREE.MeshStandardMaterial({ map: asphalt, vertexColors: true, roughness: 0.92, side: THREE.DoubleSide }));
     rm.receiveShadow = true; world.add(rm);
     const mm = new THREE.Mesh(geo(mpos), new THREE.MeshBasicMaterial({ color: '#e8e4d8', side: THREE.DoubleSide })); world.add(mm);
     // tram rails
@@ -388,7 +427,7 @@ export async function buildWorld(scene, url = 'assets/map.json', opts = {}) {
         strip('band', x1, z1, x2, z2, h - 1.5, h + 0.6, per, L, colorArr('#f4f4f4'), colorArr('#dcdcdc'), 0.25);
       } else if (type === 'bigbox') {
         strip('metal', x1, z1, x2, z2, 0, h - 1.4, per, L, dimc(1), dimc(0.7));
-        const bc = colorArr(BRAND[(hash(bi) * BRAND.length) | 0]); strip('band', x1, z1, x2, z2, h - 1.4, h + 0.3, per, L, bc, bc, 0.2);
+        const pbb = parodyFor(b.b, b.n), bc = colorArr(pbb ? pbb[2] : BRAND[(hash(bi) * BRAND.length) | 0]); strip('band', x1, z1, x2, z2, h - 1.4, h + 0.3, per, L, bc, bc, 0.2);
       } else if (type === 'complex') {
         strip('shop', x1, z1, x2, z2, 0, 3.8, per, L, dimc(1), dimc(0.75));
         strip('fins', x1, z1, x2, z2, 3.8, h, per, L, dimc(1), dimc(0.85));
@@ -403,7 +442,7 @@ export async function buildWorld(scene, url = 'assets/map.json', opts = {}) {
     if (!longest) return;
     const { L, nx, nz, mx, mz } = longest;
     if (type === 'mall') {
-      labelPlane('MALL', Math.min(26, L * 0.4), 5, '#ffffff', null, mx, h - 3.8, mz, nx, nz, 1.2);
+      { const pm = parodyFor(b.b, b.n); labelPlane(pm ? pm[0] : 'MALL', Math.min(30, L * 0.45), 5, pm ? pm[3] : '#ffffff', null, mx, h - 3.8, mz, nx, nz, 1.2); }
       const can = new THREE.Mesh(new THREE.BoxGeometry(16, 0.4, 5), new THREE.MeshStandardMaterial({ color: '#dfe6ea', metalness: .5, roughness: .2 }));
       can.position.set(mx + nx * 2.5, 5.2, mz + nz * 2.5); can.rotation.y = Math.atan2(nx, nz); can.castShadow = true; world.add(can);
       const ent = new THREE.Mesh(new THREE.PlaneGeometry(12, 4.5), new THREE.MeshStandardMaterial({ color: '#223', metalness: .8, roughness: .1, emissive: '#fff2cc', emissiveIntensity: 0.15 }));
@@ -415,8 +454,8 @@ export async function buildWorld(scene, url = 'assets/map.json', opts = {}) {
       for (let k = 0; k < 10; k++) { const [x, z] = pts[(k * 7) % n]; let cx = 0, cz = 0; for (const p of pts) { cx += p[0]; cz += p[1]; } cx /= n; cz /= n;
         const hv = new THREE.Mesh(new THREE.BoxGeometry(4, 2, 3), new THREE.MeshStandardMaterial({ color: '#9aa0a3' })); hv.position.set(cx + (x - cx) * 0.4, h + 1, cz + (z - cz) * 0.4); hv.castShadow = true; world.add(hv); }
     } else if (type === 'bigbox') {
-      const lab = LABEL[(b.s || '').split(';')[0]] || 'HIPERMARKET';
-      labelPlane(lab, Math.min(18, L * 0.5), 2.2, '#ffffff', BRAND[(hash(bi) * BRAND.length) | 0], mx, h - 0.6, mz, nx, nz, 0.8);
+      const pb = parodyFor(b.b, b.n), lab = pb ? pb[0] : LABEL[(b.s || '').split(';')[0]] || 'HIPERMARKET';
+      labelPlane(lab, Math.min(18, L * 0.5), 2.2, pb ? pb[3] : '#ffffff', pb ? pb[2] : BRAND[(hash(bi) * BRAND.length) | 0], mx, h - 0.6, mz, nx, nz, 0.8);
       const gl = new THREE.Mesh(new THREE.PlaneGeometry(Math.min(12, L * 0.35), 3.6), new THREE.MeshStandardMaterial({ map: glassTex, emissiveMap: glassEmi, emissive: '#fff', emissiveIntensity: 0.1, metalness: .6, roughness: .1 }));
       gl.position.set(mx + nx * 0.12, 1.8, mz + nz * 0.12); gl.lookAt(gl.position.x + nx, 1.8, gl.position.z + nz); world.add(gl); signCacheExtra.push(gl.material);
       const can = new THREE.Mesh(new THREE.BoxGeometry(Math.min(14, L * 0.4), 0.3, 2.5), new THREE.MeshStandardMaterial({ color: BRAND[(hash(bi) * BRAND.length) | 0] })); can.position.set(mx + nx * 1.25, 3.9, mz + nz * 1.25); can.rotation.y = Math.atan2(nx, nz); world.add(can);
@@ -438,6 +477,19 @@ export async function buildWorld(scene, url = 'assets/map.json', opts = {}) {
     const pts = D(b.p); const h = b.h; const n = pts.length;
     let cx0 = 0, cz0 = 0; for (const [x, z] of pts) { cx0 += x; cz0 += z; } const ch = chunkOf(cx0 / n, cz0 / n);
     const { buckets, garage, plain, roof, ground } = ch;
+    if (b.k === 'roof') {   // open market hall / canopy: a slab on pillars, you can walk underneath
+      const H = Math.max(4.2, h), pc = colorArr('#8e8a84'), rc = colorArr('#9aa0a3', 0.04), dim = (c, f) => [c[0] * f, c[1] * f, c[2] * f];
+      const contour = pts.map(([x, z]) => new THREE.Vector2(x, z)); let tris = []; try { tris = THREE.ShapeUtils.triangulateShape(contour, []); } catch (e) {}
+      for (const yy of [H, H + 0.35]) for (const t of tris) for (const i of [t[0], t[2], t[1]]) { roof.pos.push(contour[i].x, yy, contour[i].y); roof.col.push(...rc); }
+      for (let i = 0; i < n; i++) { const [x1, z1] = pts[i], [x2, z2] = pts[(i + 1) % n]; pushQuadAO(roof.pos, null, roof.col, [x1, H, z1], [x1, H + 0.35, z1], [x2, H + 0.35, z2], [x2, H, z2], 0, 0, 0, 0, dim(pc, 0.8), pc);
+        const L = Math.hypot(x2 - x1, z2 - z1), cnt = Math.max(1, Math.round(L / 7));
+        for (let k = 0; k < cnt; k++) { const t = k / cnt, px = x1 + (x2 - x1) * t, pz = z1 + (z2 - z1) * t, w = 0.18;
+          const c4 = [[px - w, pz - w], [px + w, pz - w], [px + w, pz + w], [px - w, pz + w]];
+          for (let j = 0; j < 4; j++) { const [ax, az] = c4[j], [bx, bz] = c4[(j + 1) % 4]; pushQuadAO(roof.pos, null, roof.col, [ax, 0, az], [ax, H, az], [bx, H, bz], [bx, 0, bz], 0, 0, 0, 0, dim(pc, 0.7), pc); }
+          collider.add(c4, { pole: true, h: 99 }); } }
+      buildingsOut.push({ pts, h: H, levels: 1, kind: 'roof', name: b.n, garage: false, special: 'roof', block: false, plainKind: true, id: bi });
+      return;
+    }
     const stype = classify(b, pts, cx0 / n, cz0 / n);
     const isGarage = b.k === 'garage' || b.k === 'garages' || (h < 3.6 && b.l <= 1);
     const special = ['church', 'school', 'retail', 'commercial', 'kindergarten', 'industrial', 'warehouse', 'hospital', 'office', 'supermarket'].includes(b.k);
@@ -451,7 +503,7 @@ export async function buildWorld(scene, url = 'assets/map.json', opts = {}) {
     for (let i = 0; i < n && !stype; i++) {
       const [x1, z1] = pts[i], [x2, z2] = pts[(i + 1) % n]; const L = Math.hypot(x2 - x1, z2 - z1);
       // footprint is CCW in (x,z) with z south => outward normal is to the right; push quad wound for outward facing
-      const u1 = per / (isGarage ? 8 : 6.4 * 8), u2 = (per + L) / (isGarage ? 8 : 6.4 * 8), v2 = isGarage ? 1 : (h - GH) / (2.9 * 8);
+      const u1 = per / (isGarage ? 8 : 6.4 * 8), u2 = (per + L) / (isGarage ? 8 : 6.4 * 8), v2 = isGarage ? 1 : (h - GH) / (2.75 * 8);
       if (GH) {
         const gu1 = per / 12.8, gu2 = (per + L) / 12.8;
         pushQuadAO(ground.pos, ground.uv, ground.col, [x1, 0, z1], [x1, GH, z1], [x2, GH, z2], [x2, 0, z2], [gu1, 0], [gu1, 1], [gu2, 1], [gu2, 0], dim(tint, 0.62), dim(tint, 0.92));
@@ -465,11 +517,15 @@ export async function buildWorld(scene, url = 'assets/map.json', opts = {}) {
         for (let k = 0; k < bays; k++) { if (hash(bi * 31 + i * 7 + k) < 0.45) continue;
           const t0 = (k + 0.5) * (L / bays);
           for (let f = 1; f < b.l; f++) if (hash(bi * 13 + i * 5 + k * 3 + f) < 0.8)
-            ch.bal.push([x1 + ex * t0 + nx * 0.5, GH + (f - 1) * 2.9 + 0.2, z1 + ez * t0 + nz * 0.5, Math.atan2(nx, nz), hash(bi + k * 17 + f)]);
+            ch.bal.push([x1 + ex * t0 + nx * 0.5, GH + (f - 1) * 2.75 + 0.2, z1 + ez * t0 + nz * 0.5, Math.atan2(nx, nz), hash(bi + k * 17 + f)]);
         }
       }
       per += L;
     }
+    // branded standalone buildings (fast food, fuel shop, supermarket in a block...): parody sign on the longest wall
+    if (!stype && !isGarage) { const pb = parodyFor(b.b, b.n);
+      if (pb) { let lg = null; for (let i = 0; i < n; i++) { const [x1, z1] = pts[i], [x2, z2] = pts[(i + 1) % n]; const L = Math.hypot(x2 - x1, z2 - z1); if (!lg || L > lg.L) lg = { L, mx: (x1 + x2) / 2, mz: (z1 + z2) / 2, nx: (z2 - z1) / L, nz: -(x2 - x1) / L }; }
+        const w = Math.min(10, lg.L * 0.7); labelPlane(pb[0], w, w / 5, pb[3], pb[2], lg.mx, Math.min(h - 0.4, block ? 3.4 : h - 0.6), lg.mz, lg.nx, lg.nz, 0.5); } }
     if (!isGarage && h > 20 && hash(bi * 3) < 0.8) { let cx = 0, cz = 0; for (const [x, z] of pts) { cx += x; cz += z; } roofBoxes.push([cx / n, h, cz / n, hash(bi)]); }
     // roof
     const contour = pts.map(([x, z]) => new THREE.Vector2(x, z));
@@ -477,7 +533,7 @@ export async function buildWorld(scene, url = 'assets/map.json', opts = {}) {
     const rc = colorArr(isGarage ? '#5a5652' : '#77726c', 0.06);
     for (const t of tris) for (const i of [t[0], t[2], t[1]]) { roof.pos.push(contour[i].x, h, contour[i].y); roof.col.push(...rc); }
     collider.add(pts, { h, walkable: isGarage, building: bi });
-    buildingsOut.push({ pts, h, kind: b.k, name: b.n, shop: b.s, garage: isGarage, special: stype });
+    buildingsOut.push({ pts, h, levels: b.l, kind: b.k, name: b.n, shop: b.s, brand: b.b, garage: isGarage, special: stype, block, plainKind: special, id: bi });
   });
   for (const k in spB) if (spB[k].pos.length) { const m = new THREE.Mesh(geo(spB[k].pos, spB[k].uv, spB[k].col), SP[k].m); m.castShadow = true; m.receiveShadow = true; world.add(m); }
   const addMesh = (g, mat, shadow = true) => { if (!g.attributes.position.count) return; const m = new THREE.Mesh(g, mat); m.castShadow = shadow; m.receiveShadow = true; world.add(m); return m; };
@@ -502,7 +558,7 @@ export async function buildWorld(scene, url = 'assets/map.json', opts = {}) {
       const list = ch.bal.slice(0, Math.max(0, MAXBAL - total)); total += list.length;
       const im = new THREE.InstancedMesh(bg, bm, list.length);
       list.forEach(([x, y, z, a, r], i) => { m4.compose(v.set(x, y, z), q.setFromAxisAngle(up, a), one); im.setMatrixAt(i, m4); im.setColorAt(i, c.set(BC[(r * BC.length) | 0])); });
-      im.castShadow = true; im.receiveShadow = true; im.computeBoundingSphere(); world.add(im);
+      im.castShadow = true; im.receiveShadow = true; im.computeBoundingSphere(); im.userData.cullDist = 380; world.add(im);
     }
     // elevator machine rooms + antennas on tall blocks
     if (roofBoxes.length) { const rb = new THREE.BoxGeometry(5, 2.6, 4); rb.translate(0, 1.3, 0); const rbi = new THREE.InstancedMesh(rb, new THREE.MeshStandardMaterial({ color: '#b3ab9e', roughness: 1 }), roofBoxes.length);
@@ -525,6 +581,7 @@ export async function buildWorld(scene, url = 'assets/map.json', opts = {}) {
     world.add(s); return s;
   }
   const placedSigns = [];
+  const mallPolys = buildingsOut.filter(b => b.special === 'mall').map(b => b.pts);
   for (const p of pois) {
     if (!SHOPLIKE.has(p.k)) continue;
     let best = null;
@@ -542,9 +599,11 @@ export async function buildWorld(scene, url = 'assets/map.json', opts = {}) {
     const nx = best.ez / best.L, nz = -best.ex / best.L; // outward (right side of CCW edge)
     p.wall = { px: best.px, pz: best.pz, nx, nz, h: best.h, L: best.L };
     p.door = [best.px + nx * 1.8, best.pz + nz * 1.8];
-    if (SIGN[p.k]) {
+    const par = parodyFor(p.b, p.n);
+    if (SIGN[p.k] || par) {
+      if (mallPolys.some(mp => Collider.inside(mp, p.x, p.z))) { p.signed = true; continue; }   // shops inside the mall: no signs on its outer walls
       // two POIs for the same shop (e.g. pharmacy + chemist) land on the same wall: one sign only; different shops side by side
-      const kind = p.k === 'casino' ? 'gambling' : p.k, txt = SIGN[kind][0];
+      const kind = par || (p.k === 'casino' ? 'gambling' : p.k), txt = par ? par[0] : SIGN[kind][0];
       const near = placedSigns.filter(o => Math.hypot(o.x - p.wall.px, o.z - p.wall.pz) < 7);
       if (near.some(o => o.txt === txt)) { p.signed = true; continue; }
       if (near.length) { const ux = -nz, uz = nx, dot = (near[0].x - p.wall.px) * ux + (near[0].z - p.wall.pz) * uz, sh = dot > 0 ? -1 : 1;
@@ -560,14 +619,14 @@ export async function buildWorld(scene, url = 'assets/map.json', opts = {}) {
     for (const a of M.areas) if (a.k === 'park' || a.k === 'grass' || a.k === 'school') {
       const pts = D(a.p); let x0 = 1e9, z0 = 1e9, x1 = -1e9, z1 = -1e9; for (const [x, z] of pts) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
       const cnt = Math.min(250, ((x1 - x0) * (z1 - z0)) / 120);
-      for (let i = 0; i < cnt; i++) { const x = rand(x0, x1), z = rand(z0, z1); if (Collider.inside(pts, x, z) && !collider.near(x, z).some(p => p.data?.building !== undefined && Collider.inside(p.pts, x, z))) spots.push([x, z]); }
+      for (let i = 0; i < cnt; i++) { const x = rand(x0, x1), z = rand(z0, z1); if (Collider.inside(pts, x, z) && offRoad(x, z, 1.2) && !collider.near(x, z).some(p => p.data?.building !== undefined && Collider.inside(p.pts, x, z))) spots.push([x, z]); }
     }
     for (const r of M.roads) if (r.k === 'residential' || r.k === 'tertiary' || r.k === 'secondary') {
       const pts = D(r.p);
       for (let i = 0; i < pts.length - 1; i++) { const [x1, z1] = pts[i], [x2, z2] = pts[i + 1]; const L = Math.hypot(x2 - x1, z2 - z1); const nx = -(z2 - z1) / L, nz = (x2 - x1) / L;
         for (let s = 6; s < L; s += rand(10, 22)) for (const side of [-1, 1]) if (Math.random() < 0.6) {
           const off = r.w / 2 + 2.2, x = x1 + (x2 - x1) * s / L + nx * off * side, z = z1 + (z2 - z1) * s / L + nz * off * side;
-          if (!collider.near(x, z).some(p => Collider.inside(p.pts, x, z))) spots.push([x, z]);
+          if (offRoad(x, z, 1.0) && !collider.near(x, z).some(p => Collider.inside(p.pts, x, z))) spots.push([x, z]);
         } }
     }
     const N = Math.min(spots.length, 2600);
@@ -587,7 +646,7 @@ export async function buildWorld(scene, url = 'assets/map.json', opts = {}) {
     for (const r of M.roads) if (['primary', 'secondary', 'tertiary', 'trunk'].includes(r.k)) {
       const pts = D(r.p);
       for (let i = 0; i < pts.length - 1; i++) { const [x1, z1] = pts[i], [x2, z2] = pts[i + 1]; const L = Math.hypot(x2 - x1, z2 - z1); const nx = -(z2 - z1) / L, nz = (x2 - x1) / L;
-        for (let s = 0; s < L; s += 30) spots.push([x1 + (x2 - x1) * s / L + nx * (r.w / 2 + 1), z1 + (z2 - z1) * s / L + nz * (r.w / 2 + 1), (x2 - x1) / L, (z2 - z1) / L]); }
+        for (let s = 0; s < L; s += 30) { const px = x1 + (x2 - x1) * s / L + nx * (r.w / 2 + 1), pz = z1 + (z2 - z1) * s / L + nz * (r.w / 2 + 1); if (offRoad(px, pz, 0.2)) spots.push([px, pz, (x2 - x1) / L, (z2 - z1) / L]); } }
     }
     const poles = new THREE.InstancedMesh(poleG, new THREE.MeshStandardMaterial({ color: '#a8a8a0' }), spots.length);
     const m4 = new THREE.Matrix4(); const cpos = [];
@@ -619,7 +678,7 @@ export async function buildWorld(scene, url = 'assets/map.json', opts = {}) {
       const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, R2 = Math.hypot(x1 - x0, z1 - z0) / 2, vx = -lg.uz, vz = lg.ux, a = Math.atan2(vx, vz);
       for (let u = -R2; u < R2; u += 2.7) for (let w = -R2; w < R2; w += 6.2) { if (Math.random() > 0.62) continue;
         const x = cx + lg.ux * u + vx * w, z = cz + lg.uz * u + vz * w;
-        if (!Collider.inside(pts, x, z) || collider.near(x, z).some(p => p.data?.building !== undefined && Collider.inside(p.pts, x, z))) continue;
+        if (!Collider.inside(pts, x, z) || carriageDist(x, z) < 0.6 || collider.near(x, z).some(p => p.data?.building !== undefined && Collider.inside(p.pts, x, z))) continue;
         carSpots.push([x, z, a + (Math.floor(w / 6.2) % 2 ? Math.PI : 0)]); } }
     const N = Math.min(carSpots.length, 2600);
     const cars = new THREE.InstancedMesh(car, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .35, metalness: .25 }), N);
@@ -627,14 +686,14 @@ export async function buildWorld(scene, url = 'assets/map.json', opts = {}) {
     for (let i = 0; i < N; i++) { const [x, z, a] = carSpots[i]; m4.compose(new THREE.Vector3(x, 0, z), q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), a), new THREE.Vector3(1, 1, 1));
       cars.setMatrixAt(i, m4); cars.setColorAt(i, new THREE.Color(pick(COLS)));
       const c = Math.cos(a), s = Math.sin(a), hw = .9, hl = 2.1; collider.add([[-hw, -hl], [hw, -hl], [hw, hl], [-hw, hl]].map(([px, pz]) => [x + px * c + pz * s, z - px * s + pz * c]), { car: true, h: 1.9, walkable: true }); }
-    cars.castShadow = true; world.add(cars); }
+    cars.castShadow = true; cars.userData.cullDist = 260; world.add(cars); }
 
   // Street lamps (opposite side to the cable poles); positions exported for night lights
   const lamps = [];
   { for (const r of M.roads) if (r.w >= 7) { const pts = D(r.p);
       for (let i = 0; i < pts.length - 1; i++) { const [x1, z1] = pts[i], [x2, z2] = pts[i + 1]; const L = Math.hypot(x2 - x1, z2 - z1); const ux = (x2 - x1) / L, uz = (z2 - z1) / L, nx = -uz, nz = ux;
         for (let s = 10; s < L; s += 34) { const x = x1 + ux * s - nx * (r.w / 2 + 0.9), z = z1 + uz * s - nz * (r.w / 2 + 0.9);
-          if (collider.near(x, z).some(p => p.data?.building !== undefined && Collider.inside(p.pts, x, z))) continue; lamps.push([x, z, Math.atan2(nx, nz)]); } } }
+          if (!offRoad(x, z, 0.3) || collider.near(x, z).some(p => p.data?.building !== undefined && Collider.inside(p.pts, x, z))) continue; lamps.push([x, z, Math.atan2(nx, nz)]); } } }
     const poleG = new THREE.CylinderGeometry(0.08, 0.13, 7.5, 6); poleG.translate(0, 3.75, 0);
     const armG = new THREE.BoxGeometry(0.08, 0.08, 1.6); armG.translate(0, 7.4, 0.75);
     const headG = new THREE.BoxGeometry(0.35, 0.14, 0.6); headG.translate(0, 7.3, 1.45);
@@ -653,15 +712,15 @@ export async function buildWorld(scene, url = 'assets/map.json', opts = {}) {
     const bins = [], benches = [], bollards = [], hedges = [];
     for (const r of M.roads) { const pts = D(r.p);
       for (let i = 0; i < pts.length - 1; i++) { const [x1, z1] = pts[i], [x2, z2] = pts[i + 1]; const L = Math.hypot(x2 - x1, z2 - z1); if (L < 6) continue; const ux = (x2 - x1) / L, uz = (z2 - z1) / L, nx = -uz, nz = ux, a = Math.atan2(ux, uz);
-        if (r.w >= 6) for (let s = 15; s < L; s += 48 + Math.random() * 30) { const sd = Math.random() < .5 ? 1 : -1, x = x1 + ux * s + nx * sd * (r.w / 2 + 1.6), z = z1 + uz * s + nz * sd * (r.w / 2 + 1.6); if (free(x, z)) bins.push([x, z, a]); }
-        if (r.k === 'residential' || r.k === 'footway') for (let s = 20; s < L; s += 70) if (Math.random() < .35) { const sd = Math.random() < .5 ? 1 : -1, x = x1 + ux * s + nx * sd * (r.w / 2 + 2.3), z = z1 + uz * s + nz * sd * (r.w / 2 + 2.3); if (free(x, z)) benches.push([x, z, a + (sd > 0 ? Math.PI / 2 : -Math.PI / 2)]); }
-        if (r.k === 'primary' || r.k === 'secondary') for (let s = 0; s < L; s += 2.6) if (Math.floor(s / 40) % 3 === 0) for (const sd of [-1, 1]) { const x = x1 + ux * s + nx * sd * (r.w / 2 + 0.45), z = z1 + uz * s + nz * sd * (r.w / 2 + 0.45); bollards.push([x, z, 0]); }
-        if (r.k === 'residential' && Math.random() < .3 && L > 20) { const sd = Math.random() < .5 ? 1 : -1, len = Math.min(L - 4, 14 + Math.random() * 16), s0 = (L - len) / 2, x = x1 + ux * (s0 + len / 2) + nx * sd * (r.w / 2 + 3.6), z = z1 + uz * (s0 + len / 2) + nz * sd * (r.w / 2 + 3.6); if (free(x, z)) hedges.push([x, z, a, len]); }
+        if (r.w >= 6) for (let s = 15; s < L; s += 48 + Math.random() * 30) { const sd = Math.random() < .5 ? 1 : -1, x = x1 + ux * s + nx * sd * (r.w / 2 + 1.6), z = z1 + uz * s + nz * sd * (r.w / 2 + 1.6); if (free(x, z) && offRoad(x, z, 0.7)) bins.push([x, z, a]); }
+        if (r.k === 'residential' || r.k === 'footway') for (let s = 20; s < L; s += 70) if (Math.random() < .35) { const sd = Math.random() < .5 ? 1 : -1, x = x1 + ux * s + nx * sd * (r.w / 2 + 2.3), z = z1 + uz * s + nz * sd * (r.w / 2 + 2.3); if (free(x, z) && offRoad(x, z, 0.6)) benches.push([x, z, a + (sd > 0 ? Math.PI / 2 : -Math.PI / 2)]); }
+        if (r.k === 'primary' || r.k === 'secondary') for (let s = 0; s < L; s += 2.6) if (Math.floor(s / 40) % 3 === 0) for (const sd of [-1, 1]) { const x = x1 + ux * s + nx * sd * (r.w / 2 + 0.45), z = z1 + uz * s + nz * sd * (r.w / 2 + 0.45); if (offRoad(x, z, 0.05)) bollards.push([x, z, 0]); }
+        if (r.k === 'residential' && Math.random() < .3 && L > 20) { const sd = Math.random() < .5 ? 1 : -1, len = Math.min(L - 4, 14 + Math.random() * 16), s0 = (L - len) / 2, x = x1 + ux * (s0 + len / 2) + nx * sd * (r.w / 2 + 3.6), z = z1 + uz * (s0 + len / 2) + nz * sd * (r.w / 2 + 3.6); if (free(x, z) && offRoad(x, z, 0.8) && offRoad(x + ux * len / 2, z + uz * len / 2, 0.8) && offRoad(x - ux * len / 2, z - uz * len / 2, 0.8)) hedges.push([x, z, a, len]); }
       } }
     for (const a of M.areas) if (a.k === 'park' || a.k === 'play') { const pts = D(a.p); for (let i = 0; i < pts.length; i += 3) { const [x, z] = pts[i], [x2, z2] = pts[(i + 1) % pts.length]; const L = Math.hypot(x2 - x, z2 - z); if (L < 4) continue; const mx = (x + x2) / 2 + (z2 - z) / L * 1.5, mz = (z + z2) / 2 - (x2 - x) / L * 1.5; if (free(mx, mz)) benches.push([mx, mz, Math.atan2(-(z2 - z), x2 - x)]); } }
     const inst = (g, mat, list, sc, coll) => { if (!list.length) return; const im = new THREE.InstancedMesh(g, mat, list.length);
       list.forEach(([x, z, a, len], i) => { im.setMatrixAt(i, m4.compose(v.set(x, 0, z), q.setFromAxisAngle(up, a || 0), sc ? new THREE.Vector3(1, 1, len ? len : 1) : one)); if (coll) coll(x, z, a || 0, len); });
-      im.castShadow = list.length < 1500; im.receiveShadow = true; world.add(im); };
+      im.castShadow = list.length < 1500; im.receiveShadow = true; im.userData.cullDist = 220; world.add(im); };
     const box = (x, z, a, hw, hl, h) => { const c = Math.cos(a), s = Math.sin(a); collider.add([[-hw, -hl], [hw, -hl], [hw, hl], [-hw, hl]].map(([px, pz]) => [x + px * c + pz * s, z - px * s + pz * c]), { h }); };
     const binG = mergeColored([[new THREE.BoxGeometry(1.2, 1.1, 0.9), '#2f7d3a', 0, 0.55, 0], [new THREE.BoxGeometry(1.26, 0.12, 0.98), '#236030', 0, 1.14, 0], [new THREE.CylinderGeometry(.1, .1, .05, 8), '#111', -0.45, 0.08, 0.35], [new THREE.CylinderGeometry(.1, .1, .05, 8), '#111', 0.45, 0.08, 0.35]]);
     inst(binG, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .7 }), bins.slice(0, 900), false, (x, z, a) => box(x, z, a, .6, .45, 1.2));
@@ -672,14 +731,17 @@ export async function buildWorld(scene, url = 'assets/map.json', opts = {}) {
     const hedgeG = new THREE.BoxGeometry(1.1, 1.1, 1); hedgeG.translate(0, 0.55, 0);
     inst(hedgeG, new THREE.MeshStandardMaterial({ color: '#3f7f35', roughness: 1 }), hedges, true, (x, z, a, len) => box(x, z, a, .55, len / 2, 1.2));
     // bus stop shelters at real bus stop nodes
-    for (const p of M.pois) if (p.k === 'bus_stop' || p.k === 'platform') { const x = p.x / 10, z = p.z / 10; if (!free(x, z)) continue;
+    for (const p of M.pois) if (p.k === 'bus_stop' || p.k === 'platform') { let x = p.x / 10, z = p.z / 10, face = null;
+      const nc = nearestCarriage(x, z); if (nc && nc.d < 25) { let sx = x - nc.px, sz = z - nc.pz; const sl = Math.hypot(sx, sz); if (sl < 0.01) { const ex = nc.s.x2 - nc.s.x1, ez = nc.s.z2 - nc.s.z1, el = Math.hypot(ex, ez) || 1; sx = -ez / el; sz = ex / el; } else { sx /= sl; sz /= sl; }
+        x = nc.px + sx * (nc.s.hw + 2.0); z = nc.pz + sz * (nc.s.hw + 2.0); face = Math.atan2(-sx, -sz); }
+      if (!free(x, z) || !offRoad(x, z, 0.8)) continue;
       const g = new THREE.Group(); const glass = new THREE.MeshStandardMaterial({ color: '#bcd7e6', transparent: true, opacity: .35, roughness: .1 });
       const roofM = new THREE.Mesh(new THREE.BoxGeometry(3.6, .12, 1.6), new THREE.MeshStandardMaterial({ color: '#555' })); roofM.position.y = 2.5; g.add(roofM);
       const back = new THREE.Mesh(new THREE.BoxGeometry(3.4, 2.1, .05), glass); back.position.set(0, 1.35, -.7); g.add(back);
       const bench = new THREE.Mesh(new THREE.BoxGeometry(2.4, .08, .4), new THREE.MeshStandardMaterial({ color: '#777' })); bench.position.set(0, .5, -.45); g.add(bench);
       [-1.7, 1.7].forEach(xx => { const pl = new THREE.Mesh(new THREE.BoxGeometry(.08, 2.5, .08), new THREE.MeshStandardMaterial({ color: '#555' })); pl.position.set(xx, 1.25, -.7); g.add(pl); });
       const sgn = new THREE.Mesh(new THREE.BoxGeometry(.5, .5, .05), new THREE.MeshStandardMaterial({ color: '#f2c200', emissive: '#f2c200', emissiveIntensity: .2 })); sgn.position.set(1.9, 2.3, 0); g.add(sgn);
-      g.position.set(x, 0, z); g.rotation.y = hash(p.x) * 6.28; g.traverse(o => { if (o.isMesh) o.castShadow = true; }); world.add(g); box(x, z, g.rotation.y, 1.8, .9, 99); }
+      g.position.set(x, 0, z); g.rotation.y = face ?? hash(p.x) * 6.28; g.traverse(o => { if (o.isMesh) o.castShadow = true; }); world.add(g); box(x, z, g.rotation.y, 1.8, .9, 99); }
   }
   // longest tram line for the moving tram
   let tramPath = null; { let bestL = 0; for (const r of M.rails) { const pts = D(r.p); let L = 0; for (let i = 0; i < pts.length - 1; i++) L += Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]); if (r.k === 'tram' && L > bestL) { bestL = L; tramPath = pts; } } }
@@ -692,7 +754,7 @@ export async function buildWorld(scene, url = 'assets/map.json', opts = {}) {
       if (groups.size < 2) continue;
       for (const ids of groups.values()) { const n = new THREE.InstancedMesh(im.geometry, im.material, ids.length);
         ids.forEach((id, j) => { im.getMatrixAt(id, m4); n.setMatrixAt(j, m4); if (im.instanceColor) { im.getColorAt(id, c); n.setColorAt(j, c); } });
-        n.castShadow = im.castShadow; n.receiveShadow = im.receiveShadow; n.computeBoundingSphere(); world.add(n); }
+        n.castShadow = im.castShadow; n.receiveShadow = im.receiveShadow; n.userData.cullDist = im.userData.cullDist; n.computeBoundingSphere(); world.add(n); }
       world.remove(im);
     } }
 
@@ -704,7 +766,7 @@ export async function buildWorld(scene, url = 'assets/map.json', opts = {}) {
     for (const m of world.userData.signExtra || []) { if (m.userData.day === undefined) m.userData.day = m.emissiveIntensity; m.emissiveIntensity = on ? Math.max(1, m.userData.day * 2) : m.userData.day; }
   }
 
-  return { M, world, collider, pois, placeSign, lamps, tramPath, setNight, buildings: buildingsOut, roads: M.roads.map(r => ({ ...r, pts: D(r.p) })), areas: M.areas.map(a => ({ ...a, pts: D(a.p) })), radius: R };
+  return { offRoad, carriageDist, footDist, nearestCarriage, M, world, collider, pois, placeSign, lamps, tramPath, setNight, buildings: buildingsOut, roads: M.roads.map(r => ({ ...r, pts: D(r.p) })), areas: M.areas.map(a => ({ ...a, pts: D(a.p) })), radius: R };
 }
 
 export function mergeColored(parts) {
