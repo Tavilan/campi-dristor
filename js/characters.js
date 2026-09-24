@@ -151,85 +151,147 @@ export async function makeCampiHead(head, S = 0.42) {
   return { face, H, setExpr(grim = 0, smile = 0, open = 0, oo = 0) { inf[0] = grim; inf[1] = smile; if (inf.length > 2) { inf[2] = open; inf[3] = oo; } } };
 }
 
-// ---------------- Câmpi's body: rigged humanoid (Mixamo X Bot from the three.js examples) recoloured to his clothes
-export async function makeCampiBody() {
-  const { GLTFLoader } = await import('../lib/addons/loaders/GLTFLoader.js');
-  const { mergeVertices } = await import('../lib/addons/utils/BufferGeometryUtils.js');
-  const gltf = await new GLTFLoader().loadAsync(window.__BODY || 'assets/Xbot.glb');
-  const root = gltf.scene;
-  const COL = { shirt: new THREE.Color('#f2c318'), skin: new THREE.Color('#c99a80'), pants: new THREE.Color('#1f2a44'), shoe: new THREE.Color('#f4f4f2'), sole: new THREE.Color('#d8d8d8') };
-  root.traverse(o => {
-    if (!o.isSkinnedMesh) return;
-    if (/visor/i.test(o.name)) { o.visible = false; return; }
-    o.geometry.computeBoundingBox(); const bb = o.geometry.boundingBox;
-    const upZ = bb.max.z - bb.min.z > (bb.max.y - bb.min.y) * 1.5;         // Soldier is authored Z-up, X Bot Y-up
-    const k = 1.8 / (upZ ? bb.max.z - bb.min.z : bb.max.y - bb.min.y);     // normalise to a 1.8 m person
-    const p = o.geometry.attributes.position, c = new Float32Array(p.count * 3), tmp = new THREE.Color();
-    for (let i = 0; i < p.count; i++) {
-      const x = Math.abs(p.getX(i)) * k, y = ((upZ ? p.getZ(i) : p.getY(i)) - (upZ ? bb.min.z : bb.min.y)) * k;
-      let col;
-      if (y < 0.035) col = COL.sole; else if (y < 0.11) col = COL.shoe;
-      else if (y < 1.04) col = COL.pants;
-      else if (x > 0.3) col = COL.skin;                 // forearms + hands (T-pose: arms along X)
-      else if (x > 0.13 && y > 1.3) col = COL.shirt;    // short sleeves
-      else if (y < 1.47) col = COL.shirt; else col = COL.skin;
-      tmp.copy(col); c.set([tmp.r, tmp.g, tmp.b], i * 3);
-    }
-    o.geometry.setAttribute('color', new THREE.BufferAttribute(c, 3));
-    // weld the mannequin's plates and smooth them so it reads as cloth, then inflate clothes slightly
-    { // smooth normals across coincident vertices without touching topology or skin weights
-      const nrm = o.geometry.attributes.normal, map = new Map(), q = 0.002 / k;
-      for (let i = 0; i < p.count; i++) { const key = Math.round(p.getX(i) / q) + ',' + Math.round(p.getY(i) / q) + ',' + Math.round(p.getZ(i) / q); let a = map.get(key); if (!a) map.set(key, a = [0, 0, 0, []]); a[0] += nrm.getX(i); a[1] += nrm.getY(i); a[2] += nrm.getZ(i); a[3].push(i); }
-      for (const a of map.values()) { const L = Math.hypot(a[0], a[1], a[2]) || 1; for (const i of a[3]) nrm.setXYZ(i, a[0] / L, a[1] / L, a[2] / L); }
-      nrm.needsUpdate = true; }
-    const inflS = (0.016 / k).toFixed(5), inflP = (0.008 / k).toFixed(5);
-    o.material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0 });
-    o.material.onBeforeCompile = (sh) => { sh.vertexShader = sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n transformed += normalize(objectNormal) * (vColor.r > 0.8 && vColor.b < 0.3 ? ' + inflS + ' : (vColor.b > vColor.r * 1.4 ? ' + inflP + ' : 0.0));'); };
-    o.castShadow = true; o.frustumCulled = false;
-  });
-  // Replace the mannequin shell with clothes-shaped parts parented to the animated skeleton (clean male silhouette)
-  root.traverse(o => { if (o.isSkinnedMesh) o.visible = false; });
-  const B = (n) => root.getObjectByName('mixamorig' + n);
-  const M = { shirt: new THREE.MeshStandardMaterial({ color: '#f2c318', roughness: 0.9 }), skin: new THREE.MeshStandardMaterial({ color: '#c79a80', roughness: 0.7 }),
-    pants: new THREE.MeshStandardMaterial({ color: '#1f2a44', roughness: 0.85 }), shoe: new THREE.MeshStandardMaterial({ color: '#f2f2f0', roughness: 0.6 }) };
-  const seg = (from, to, r0, r1, mat, { sx = 1, sz = 1, t0 = 0, t1 = 1, extra = 0 } = {}) => {
-    const a = B(from), b = B(to); if (!a || !b) return;
-    const d = b.position.clone(); const L = d.length(); d.normalize();
-    const len = L * (t1 - t0) + extra;
-    const g = new THREE.CylinderGeometry(r1, r0, len, 14, 1, false); // (top, bottom)
-    const cap0 = new THREE.SphereGeometry(r0, 14, 8), cap1 = new THREE.SphereGeometry(r1, 14, 8);
-    const grp = new THREE.Group(); grp.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d); grp.position.copy(b.position).multiplyScalar(t0 + (t1 - t0) / 2);
-    const m = new THREE.Mesh(g, mat); const c0 = new THREE.Mesh(cap0, mat), c1 = new THREE.Mesh(cap1, mat); c0.position.y = -len / 2; c1.position.y = len / 2;
-    for (const x of [m, c0, c1]) { x.castShadow = true; grp.add(x); }
-    grp.scale.set(sx, 1, sz); a.add(grp); return grp;
-  };
-  // units are centimetres (Mixamo bones)
-  seg('Hips', 'Spine', 15.5, 15, M.pants, { sx: 1.08, sz: 0.74 });
-  seg('Spine', 'Spine1', 16.2, 16.2, M.shirt, { sx: 1.09, sz: 0.76, t0: -0.9 });
-  seg('Spine1', 'Spine2', 15.8, 16.8, M.shirt, { sx: 1.15, sz: 0.7 });
-  seg('Spine2', 'Neck', 16.5, 11, M.shirt, { sx: 1.3, sz: 0.68, t1: 0.55 });
-  seg('Neck', 'Head', 5.6, 5.2, M.skin, { t0: -0.4, extra: 3 });
+// ---------------- Rigged characters: Mixamo skeleton (X Bot, three.js examples) + clothes built as ONE skinned mesh
+// Each body part is rigidly skinned to its bone, merged into a single geometry => 1 draw call per character,
+// real mocap animations (idle / walk / run / agree / headShake).
+let rigPromise = null;
+function loadRig() {
+  if (!rigPromise) rigPromise = (async () => {
+    const { GLTFLoader } = await import('../lib/addons/loaders/GLTFLoader.js');
+    const SU = await import('../lib/addons/utils/SkeletonUtils.js');
+    const gltf = await new GLTFLoader().loadAsync('assets/Xbot.glb');
+    for (const clip of gltf.animations) clip.tracks = clip.tracks.filter(t => !/\.scale$/.test(t.name));   // scale tracks fight our head mount
+    gltf.scene.updateMatrixWorld(true);
+    return { gltf, SU, cache: new Map() };
+  })();
+  return rigPromise;
+}
+// Body specs, units = centimetres in bone space. [from, to, r0, r1, slot, {sx, sz, t0, t1, extra}]
+const SLOTS = ['shirt', 'pants', 'skin', 'shoes', 'hair', 'dark'];
+function bodySpec(kind) {
+  const muscular = kind === 'campi', female = kind === 'female', old = kind === 'old';
+  const K = muscular ? 1.12 : female ? 0.9 : 1;
+  const P = [
+    ['Hips', 'Spine', 15.5 * (female ? 1.12 : 1), 15 * K, 'pants', { sx: female ? 1.15 : 1.08, sz: 0.74 }],
+    ['Spine', 'Spine1', 16.2 * (muscular ? 0.95 : K), 16.2 * K, 'shirt', { sx: 1.09, sz: 0.76, t0: -0.9 }],
+    ['Spine1', 'Spine2', 15.8 * K, (muscular ? 19.5 : 16.8) * K * (female ? 0.95 : 1), 'shirt', { sx: muscular ? 1.25 : 1.15, sz: muscular ? 0.74 : 0.7 }],
+    ['Spine2', 'Neck', (muscular ? 19 : 16.5) * K, (muscular ? 13.5 : 11) * K, 'shirt', { sx: muscular ? 1.42 : female ? 1.1 : 1.3, sz: 0.68, t1: 0.55 }],
+    ['Neck', 'Head', 5.6 * (muscular ? 1.25 : 1), 5.2 * (muscular ? 1.2 : 1), 'skin', { t0: -0.4, extra: 3 }],
+  ];
   for (const S of ['Left', 'Right']) {
-    seg(S + 'Shoulder', S + 'Arm', 7.5, 7.2, M.shirt, { t0: 0.15 });
-    seg(S + 'Arm', S + 'ForeArm', 7.2, 6.4, M.shirt, { t1: 0.5 });            // short sleeve
-    seg(S + 'Arm', S + 'ForeArm', 5.2, 4.5, M.skin, { t0: 0.45 });
-    seg(S + 'ForeArm', S + 'Hand', 4.4, 3.2, M.skin);
-    const h = B(S + 'Hand'); if (h) { const hm = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), M.skin); hm.scale.set(3.6, 6.5, 1.8); hm.position.y = 5; hm.castShadow = true; h.add(hm); }
-    seg(S + 'UpLeg', S + 'Leg', 9.6, 7.2, M.pants);
-    seg(S + 'Leg', S + 'Foot', 7.0, 5.6, M.pants);
-    const f = B(S + 'Foot'), toe = B(S + 'ToeBase');
-    if (f && toe) { const d = toe.position.clone(); const shoe = new THREE.Mesh(new THREE.BoxGeometry(9.5, 7, 1, 1, 1, 1), M.shoe);
-      const sg = new THREE.Group(); sg.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.clone().normalize()); sg.position.copy(d).multiplyScalar(0.55);
-      const sm = new THREE.Mesh(new THREE.CapsuleGeometry(5, d.length() * 1.1, 4, 10), M.shoe); sm.scale.set(1, 1, 0.75); sm.castShadow = true; sg.add(sm); f.add(sg); }
+    P.push([S + 'Shoulder', S + 'Arm', 7.5 * K, (muscular ? 8.8 : 7.2) * K, 'shirt', { t0: 0.15 }]);
+    P.push([S + 'Arm', S + 'ForeArm', (muscular ? 8.6 : 7.2) * K, (muscular ? 7.4 : 6.4) * K, 'shirt', { t1: 0.5 }]);
+    P.push([S + 'Arm', S + 'ForeArm', (muscular ? 6.6 : 5.2) * K, (muscular ? 5.2 : 4.5) * K, 'skin', { t0: 0.45 }]);
+    P.push([S + 'ForeArm', S + 'Hand', (muscular ? 5.4 : 4.4) * K, (muscular ? 3.8 : 3.2) * K, 'skin', {}]);
+    P.push([S + 'UpLeg', S + 'Leg', (muscular ? 10.6 : 9.6) * K * (female ? 1.05 : 1), (muscular ? 7.8 : 7.2) * K, 'pants', {}]);
+    P.push([S + 'Leg', S + 'Foot', (muscular ? 7.6 : 7.0) * K, 5.6 * K, female && !old ? 'skin' : 'pants', {}]);
   }
-  const headBone = root.getObjectByName('mixamorigHead'), neck = root.getObjectByName('mixamorigNeck');
-  headBone.scale.setScalar(0.0001);                   // hide the mannequin head; Câmpi's head goes on top
-  const headMount = new THREE.Group(); neck.add(headMount);
-  const headInner = new THREE.Group(); headInner.scale.setScalar(100); headMount.add(headInner);   // bones are in cm
+  return { P, muscular, female, old };
+}
+function partMatrix(bone, child, t0, t1, extra) {
+  const d = child.position.clone(); const L = d.length(); d.normalize();
+  const len = L * (t1 - t0) + extra;
+  const m = new THREE.Matrix4().compose(d.clone().multiplyScalar(L * (t0 + (t1 - t0) / 2)), new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), d), new THREE.Vector3(1, 1, 1));
+  return { m, len };
+}
+function buildBodyGeometry(rig, kind, head) {
+  const key = kind + (head ? ':' + JSON.stringify(head) : '');
+  const hi = kind === 'campi', RS = hi ? 12 : 8, WS = hi ? 12 : 8, HS = hi ? 8 : 6;
+  if (rig.cache.has(key)) return rig.cache.get(key);
+  const root = rig.gltf.scene, surf = root.getObjectByName('Beta_Surface');
+  const bones = surf.skeleton.bones, inv = surf.bindMatrixInverse;
+  const B = (n) => root.getObjectByName('mixamorig' + n);
+  const spec = bodySpec(kind);
+  const pos = [], nor = [], sidx = [], swt = [], slot = [];
+  // Maps a point given in a bone's local frame to the skinned mesh's geometry space (bind pose)
+  const MWI = surf.matrixWorld.clone().invert(), BM = surf.bindMatrix, BMI = surf.bindMatrixInverse, boneA = new Map();
+  const toGeom = (bone) => { if (boneA.has(bone)) return boneA.get(bone); const bi = bones.indexOf(bone);
+    // 'attached' bind mode: the shader uses inverse(matrixWorld) as bindMatrixInverse, so world = boneMatrix * bindMatrix * p
+    const Mb = bone.matrixWorld.clone().multiply(surf.skeleton.boneInverses[bi]); const A = BM.clone().invert().multiply(Mb.invert()).multiply(bone.matrixWorld);
+    boneA.set(bone, A); return A; };
+  const add = (g0, bone, local, slotName) => {
+    const g = g0.index ? g0.toNonIndexed() : g0.clone(); g.applyMatrix4(local); g.applyMatrix4(toGeom(bone));
+    const bi = bones.indexOf(bone), si = SLOTS.indexOf(slotName);
+    const pa = g.attributes.position, na = g.attributes.normal;
+    for (let i = 0; i < pa.count; i++) { pos.push(pa.getX(i), pa.getY(i), pa.getZ(i)); nor.push(na.getX(i), na.getY(i), na.getZ(i)); sidx.push(bi, 0, 0, 0); swt.push(1, 0, 0, 0); slot.push(si); }
+  };
+  const S = new THREE.Matrix4(), T = new THREE.Matrix4();
+  for (const [from, to, r0, r1, sl, o] of spec.P) {
+    const a = B(from), b = B(to); if (!a || !b) continue;
+    const { m, len } = partMatrix(a, b, o.t0 ?? 0, o.t1 ?? 1, o.extra ?? 0);
+    S.makeScale(o.sx ?? 1, 1, o.sz ?? 1);
+    add(new THREE.CylinderGeometry(r1, r0, len, RS, 1, true), a, m.clone().multiply(S), sl);
+    add(new THREE.SphereGeometry(r0, WS, HS), a, m.clone().multiply(S).multiply(T.makeTranslation(0, -len / 2, 0)), sl);
+    add(new THREE.SphereGeometry(r1, WS, HS), a, m.clone().multiply(S).multiply(T.makeTranslation(0, len / 2, 0)), sl);
+  }
+  if (spec.muscular) {   // pecs, delts, biceps, traps for the gym version of Câmpi
+    const sp2 = B('Spine2'), nk = B('Neck');
+    for (const sx of [-1, 1]) {
+      add(new THREE.SphereGeometry(1, 12, 8), sp2, new THREE.Matrix4().compose(new THREE.Vector3(sx * 7.5, 4, 6.5), new THREE.Quaternion(), new THREE.Vector3(9, 6.5, 4.2)), 'shirt');
+      add(new THREE.SphereGeometry(1, 12, 8), nk, new THREE.Matrix4().compose(new THREE.Vector3(sx * 6.5, -3, -1.5), new THREE.Quaternion(), new THREE.Vector3(5.5, 3.2, 5)), 'shirt');
+      const arm = B((sx < 0 ? 'Right' : 'Left') + 'Arm'), fa = B((sx < 0 ? 'Right' : 'Left') + 'ForeArm');
+      if (arm && fa) { const { m } = partMatrix(arm, fa, 0.55, 0.8, 0);
+        add(new THREE.SphereGeometry(1, 12, 8), arm, m.clone().multiply(new THREE.Matrix4().compose(new THREE.Vector3(0, 0, 2.2), new THREE.Quaternion(), new THREE.Vector3(6.2, 8.5, 6.4))), 'skin'); }
+      const sh = B((sx < 0 ? 'Right' : 'Left') + 'Arm'); if (sh) add(new THREE.SphereGeometry(1, 12, 8), sh, new THREE.Matrix4().compose(new THREE.Vector3(0, 3, 0), new THREE.Quaternion(), new THREE.Vector3(9.5, 9, 9)), 'shirt');
+    }
+  }
+  if (spec.female) { const h = B('Hips'); add(new THREE.CylinderGeometry(15, 23, 34, 14, 1, true), h, new THREE.Matrix4().compose(new THREE.Vector3(0, -12, 0), new THREE.Quaternion(), new THREE.Vector3(1.05, 1, 0.8)), 'pants'); }
+  for (const Sd of ['Left', 'Right']) {
+    const h = B(Sd + 'Hand'); if (h) add(new THREE.SphereGeometry(1, 10, 6), h, new THREE.Matrix4().compose(new THREE.Vector3(0, 5, 0), new THREE.Quaternion(), new THREE.Vector3(3.6 * (spec.muscular ? 1.15 : 1), 6.5, 1.9)), 'skin');
+    const f = B(Sd + 'Foot'), toe = B(Sd + 'ToeBase');
+    if (f && toe) { const d = toe.position.clone(); const m = new THREE.Matrix4().compose(d.clone().multiplyScalar(0.55), new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.clone().normalize()), new THREE.Vector3(1, 1, 0.75));
+      add(new THREE.CapsuleGeometry(5, d.length() * 1.1, 3, 8), f, m, 'shoes'); }
+  }
+  if (head) {           // simple NPC head on the Head bone: skull, hair, nose, eyes, brows (+ beard / scarf / cap)
+    const hb = B('Head'), c = (x, y, z, sx, sy, sz, sl, geo) => add(geo || new THREE.SphereGeometry(1, 10, 7), hb, new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion(), new THREE.Vector3(sx, sy, sz)), sl);
+    c(0, 10, 2, 8.6, 11, 9.8, 'skin');
+    if (head.scarf) { c(0, 12, 0.5, 9.6, 11.5, 10.6, 'hair'); c(0, 1, -5, 6, 6, 6, 'hair', new THREE.ConeGeometry(1, 2, 8)); }
+    else if (!head.bald) { c(0, 14.5, -0.8, 9.3, 7.5, 10.4, 'hair'); if (head.long) c(0, 7, -5, 9.4, 12, 7, 'hair'); }
+    if (head.cap) { c(0, 17, 0, 9.4, 4.2, 10.2, 'shirt'); c(0, 15.4, 9.5, 7, 0.8, 5, 'shirt', new THREE.BoxGeometry(1, 1, 1)); }
+    c(0, 8.5, 11.2, 1.5, 2.3, 1.9, 'skin');
+    for (const sx of [-1, 1]) { c(sx * 3.2, 11.2, 10.4, 0.9, 1.0, 0.6, 'dark'); c(sx * 3.3, 13.4, 10.2, 1.9, 0.45, 0.6, 'hair', new THREE.BoxGeometry(1, 1, 1)); c(sx * 8.6, 9.5, 1, 1.4, 2.6, 1.8, 'skin'); }
+    c(0, 5.2, 10.3, 2.6, 0.45, 0.5, 'dark', new THREE.BoxGeometry(1, 1, 1));
+    if (head.beard) c(0, 4.5, 6.5, 7.3, 5, 6, 'hair');
+    if (head.glasses) for (const sx of [-1, 1]) c(sx * 3.3, 11.2, 11.3, 2.3, 2, 0.3, 'dark', new THREE.TorusGeometry(1, 0.12, 5, 14));
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(sidx, 4)); g.setAttribute('skinWeight', new THREE.Float32BufferAttribute(swt, 4));
+  const out = { g, slot: new Uint8Array(slot) }; rig.cache.set(key, out); return out;
+}
+export async function makeRigCharacter(kind = 'male', colors = {}, head = null) {
+  const rig = await loadRig();
+  const { g: base, slot } = buildBodyGeometry(rig, kind, head);
+  const root = rig.SU.clone(rig.gltf.scene);
+  const surf = root.getObjectByName('Beta_Surface');
+  root.traverse(o => { if (o.isSkinnedMesh) o.visible = false; });
+  const C = { shirt: '#f2c318', pants: '#1f2a44', skin: '#c79a80', shoes: '#f2f2f0', hair: '#3a2a20', dark: '#1a1414', ...colors };
+  const pal = SLOTS.map(k => new THREE.Color(C[k])), col = new Float32Array(slot.length * 3);
+  for (let i = 0; i < slot.length; i++) { const c = pal[slot[i]]; col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b; }
+  const g = new THREE.BufferGeometry();
+  for (const k of ['position', 'normal', 'skinIndex', 'skinWeight']) g.setAttribute(k, base.attributes[k]);   // shared buffers
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  const mesh = new THREE.SkinnedMesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82 }));
+  mesh.castShadow = true;
+  mesh.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 90, 0), 160);   // local units (Armature is 0.01) => ~1.6 m around the body
+  surf.parent.add(mesh); mesh.position.copy(surf.position); mesh.quaternion.copy(surf.quaternion); mesh.scale.copy(surf.scale);
+  mesh.bind(surf.skeleton, surf.bindMatrix);
   const mixer = new THREE.AnimationMixer(root);
-  const actions = {}; for (const clip of gltf.animations) { clip.tracks = clip.tracks.filter(t => !/mixamorigHead(Top_End)?\.scale/.test(t.name)); actions[clip.name.toLowerCase()] = mixer.clipAction(clip); }
+  const actions = {}; for (const clip of rig.gltf.animations) actions[clip.name.toLowerCase()] = mixer.clipAction(clip);
   for (const k of ['idle', 'walk', 'run']) { actions[k].play(); actions[k].setEffectiveWeight(k === 'idle' ? 1 : 0); }
-  return { root, mixer, actions, headBone, headMount, headInner };
+  actions.idle.time = Math.random() * 2; actions.walk.time = Math.random();
+  const headBone = root.getObjectByName('mixamorigHead'), neck = root.getObjectByName('mixamorigNeck');
+  return { root, mesh, mixer, actions, headBone, neck, setWalk(v, dt) {
+    const wW = Math.min(1, v / 1.1), wR = 0; actions.idle.setEffectiveWeight(1 - wW); actions.walk.setEffectiveWeight(wW); actions.run.setEffectiveWeight(wR);
+    actions.walk.timeScale = Math.max(0.6, v / 1.4); mixer.update(dt); } };
+}
+// Câmpi: muscular body on the rig, his real 3D face mounted on the head bone
+export async function makeCampiBody() {
+  const c = await makeRigCharacter('campi', { shirt: '#f2c318', pants: '#1f2a44', skin: '#c79a80', shoes: '#f2f2f0' });
+  c.headBone.scale.setScalar(0.0001);                     // (no mannequin head in our mesh anyway; keeps children hidden)
+  const headMount = new THREE.Group(); c.neck.add(headMount);
+  const headInner = new THREE.Group(); headInner.scale.setScalar(100); headMount.add(headInner);   // bones are in cm
+  return { ...c, headMount, headInner };
 }
 // ---------------- Walk animation
 export function animateHuman(h, speed, dt, t, extra = {}) {

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { buildWorld, Collider, canvasTex, pick, rand, signMaterial } from './world.js';
-import { makeHuman, simpleHead, makeCampiHead, makeCampiBody, animateHuman, makeMooDeng, animateHippo, makeDog, animateDog, makeCar } from './characters.js';
+import { makeHuman, simpleHead, makeCampiHead, makeCampiBody, makeRigCharacter, animateHuman, makeMooDeng, animateHippo, makeDog, animateDog, makeCar } from './characters.js';
 import { MISSIONS, NPC_DEFS, PED_LINES, DOG_BITES, CAR_HITS } from './content.js';
 import { lineId } from './slug.js';
 
@@ -17,13 +17,32 @@ renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadow
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 const scene = new THREE.Scene();
-scene.background = canvasTex(4, 256, (g, w, h) => { const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#5f9fd6'); gr.addColorStop(0.55, '#a9cbe4'); gr.addColorStop(1, '#e9dcc6'); g.fillStyle = gr; g.fillRect(0, 0, w, h); });
-scene.fog = new THREE.Fog('#dcd6c8', 90, 420);
-const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 900);
-scene.add(new THREE.HemisphereLight('#fff8ec', '#7d8a6a', 1.25));
-const sun = new THREE.DirectionalLight('#fff0d8', 2.3);
+// ---------------- Time of day: golden-hour sunset (default) or night
+const QUALITY = (isTouch && (navigator.hardwareConcurrency || 4) <= 4) || /quality=low/.test(location.search) ? 'low' : 'high';
+const SKY = {
+  sunset: canvasTex(4, 512, (g, w, h) => { const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#2b4a86'); gr.addColorStop(0.35, '#7b77b0'); gr.addColorStop(0.55, '#e8a07a'); gr.addColorStop(0.68, '#ffc98a'); gr.addColorStop(1, '#f3d2b0'); g.fillStyle = gr; g.fillRect(0, 0, w, h); }),
+  night: canvasTex(256, 512, (g, w, h) => { const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#040814'); gr.addColorStop(0.55, '#101a36'); gr.addColorStop(0.7, '#2a2440'); gr.addColorStop(1, '#3a2c2a'); g.fillStyle = gr; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 260; i++) { g.fillStyle = `rgba(255,255,255,${Math.random() * .8})`; g.fillRect(Math.random() * w, Math.random() * h * 0.55, 1, 1); } }),
+};
+scene.fog = new THREE.Fog('#e9bfa0', 80, 430);
+const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 470);
+const hemi = new THREE.HemisphereLight('#ffe2c4', '#6a6070', 1.0); scene.add(hemi);
+const sun = new THREE.DirectionalLight('#ffb070', 2.8);
+const SUN_OFF = new THREE.Vector3(-110, 48, 60);           // low sun from the west = long shadows
+const nightLights = []; for (let i = 0; i < (QUALITY === 'low' ? 4 : 8); i++) { const l = new THREE.PointLight('#ffb45a', 0, 22, 1.6); scene.add(l); nightLights.push(l); }
+let NIGHT = false;
+function setTimeOfDay(night) {
+  NIGHT = night;
+  scene.background = night ? SKY.night : SKY.sunset;
+  scene.fog.color.set(night ? '#1a1a2a' : '#ebc9ae'); scene.fog.near = night ? 40 : 80; scene.fog.far = night ? 300 : 430;
+  hemi.color.set(night ? '#6d7fb8' : '#ffe2c4'); hemi.groundColor.set(night ? '#1b1820' : '#6a6070'); hemi.intensity = night ? 0.35 : 1.35;
+  sun.color.set(night ? '#8fa8ff' : '#ffb070'); sun.intensity = night ? 0.35 : 3.1; SUN_OFF.set(night ? 60 : -110, night ? 90 : 48, night ? -40 : 60);
+  renderer.toneMappingExposure = night ? 1.25 : 1.0;
+  if (W) W.setNight(night);
+  $('bNight') && ($('bNight').textContent = night ? '☀️' : '🌙');
+}
 sun.castShadow = true; sun.shadow.mapSize.set(isTouch ? 1024 : 2048, isTouch ? 1024 : 2048);
-Object.assign(sun.shadow.camera, { left: -45, right: 45, top: 45, bottom: -45, near: 1, far: 200 }); sun.shadow.bias = -0.0005;
+Object.assign(sun.shadow.camera, { left: -70, right: 70, top: 70, bottom: -70, near: 1, far: 320 }); sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.04;
 scene.add(sun, sun.target);
 function resize() { renderer.setSize(innerWidth, innerHeight, false); camera.aspect = innerWidth / innerHeight; camera.fov = camera.aspect < 0.8 ? 72 : 60; camera.updateProjectionMatrix(); }
 addEventListener('resize', resize); resize();
@@ -101,6 +120,45 @@ function ambience() { // soft city hum
   const b = actx.createBuffer(1, actx.sampleRate * 3, actx.sampleRate), a = b.getChannelData(0); let last = 0;
   for (let i = 0; i < a.length; i++) { last = (last + 0.02 * (Math.random() * 2 - 1)) / 1.02; a[i] = last * 3; }
   const s = actx.createBufferSource(); s.buffer = b; s.loop = true; const g = actx.createGain(); g.gain.value = 0.18; s.connect(g).connect(master); s.start();
+  ambGain = g;
+  // traffic rumble layer (louder next to the boulevards)
+  const b2 = actx.createBuffer(1, actx.sampleRate * 4, actx.sampleRate), a2 = b2.getChannelData(0);
+  for (let i = 0; i < a2.length; i++) a2[i] = (Math.random() * 2 - 1) * (0.6 + 0.4 * Math.sin(i / actx.sampleRate * 0.7));
+  const s2 = actx.createBufferSource(); s2.buffer = b2; s2.loop = true; const f2 = actx.createBiquadFilter(); f2.type = 'lowpass'; f2.frequency.value = 260;
+  trafficGain = actx.createGain(); trafficGain.gain.value = 0; s2.connect(f2).connect(trafficGain).connect(master); s2.start();
+}
+let ambGain = null, trafficGain = null, bigRoadPts = null, stepAcc = 0, onGrass = false, envT = 0, nextEvent = 8;
+function panned(fn, pan = rand(-0.9, 0.9), vol = 0.35) {   // play an SFX quietly from a random side (distant event)
+  if (!actx) return; const p = actx.createStereoPanner(), g = actx.createGain(); p.pan.value = pan; g.gain.value = vol; p.connect(g).connect(master);
+  const old = master; master = p; try { fn(); } finally { master = old; }
+}
+function footstep(grass, run) {
+  if (!actx) return; const t = actx.currentTime, d = 0.07, b = actx.createBuffer(1, actx.sampleRate * d, actx.sampleRate), a = b.getChannelData(0);
+  for (let i = 0; i < a.length; i++) a[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / a.length, 3);
+  const s = actx.createBufferSource(); s.buffer = b; const f = actx.createBiquadFilter(); f.type = grass ? 'lowpass' : 'bandpass'; f.frequency.value = grass ? 900 : 1800 + Math.random() * 600;
+  const g = actx.createGain(); g.gain.value = (grass ? 0.18 : 0.26) * (run ? 1.3 : 1); s.connect(f).connect(g).connect(master); s.start(t);
+}
+function updateEnvAudio(dt) {
+  if (!actx || muted) return;
+  envT -= dt;
+  if (envT <= 0) { envT = 0.5;
+    if (!bigRoadPts) { bigRoadPts = []; for (const r of W.roads) if (r.w >= 11) for (const p of r.pts) bigRoadPts.push(p); }
+    let d = 1e9; for (const [x, z] of bigRoadPts) { const dd = (x - P.x) ** 2 + (z - P.z) ** 2; if (dd < d) d = dd; } d = Math.sqrt(d);
+    trafficGain.gain.setTargetAtTime(clamp(1 - d / 90, 0, 1) * (NIGHT ? 0.25 : 0.55), actx.currentTime, 0.4);
+    onGrass = W.areas.some(a => (a.k === 'park' || a.k === 'grass' || a.k === 'pitch') && Math.abs(a.pts[0][0] - P.x) < 400 && Collider.inside(a.pts, P.x, P.z));
+  }
+  // footsteps synced to speed
+  if (!P.scooter && P.y <= P.ground + 0.05 && P.speed > 0.6) { stepAcc += P.speed * dt; const stride = P.speed > 5 ? 1.25 : 0.72; if (stepAcc > stride) { stepAcc = 0; footstep(onGrass, P.speed > 5); } }
+  // distant life of the neighbourhood
+  nextEvent -= dt;
+  if (nextEvent <= 0) { nextEvent = rand(9, 22);
+    const r = Math.random();
+    if (r < 0.35) panned(() => SFX.bark(), undefined, 0.22);
+    else if (r < 0.55) panned(() => SFX.manea(), undefined, 0.12);
+    else if (r < 0.7) panned(() => SFX.horn(), undefined, 0.15);
+    else if (r < 0.8 && !NIGHT) panned(() => SFX.drill(), undefined, 0.2);
+    else if (tram && Math.hypot(tram.obj.position.x - P.x, tram.obj.position.z - P.z) < 120) panned(() => { tone(1318, 0.25, 'sine', 0.3); tone(1318, 0.25, 'sine', 0.3, null, 0.35); }, undefined, 0.4);
+  }
 }
 function pickVoice() { const vs = speechSynthesis?.getVoices?.() || []; roVoice = vs.find(v => /^ro/i.test(v.lang)) || null; }
 if ('speechSynthesis' in window) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
@@ -110,6 +168,7 @@ function speak(text, who) {
   const h = [...who].reduce((a, c) => a + c.charCodeAt(0), 0); u.pitch = 0.7 + (h % 7) / 10; u.rate = 1.08;
   speechSynthesis.cancel(); speechSynthesis.speak(u);
 }
+$('bNight').onclick = (e) => { e.stopPropagation(); setTimeOfDay(!NIGHT); };
 $('bMute').onclick = (e) => { e.stopPropagation(); muted = !muted; if (master) master.gain.value = muted ? 0 : 0.8; $('bMute').textContent = muted ? '🔇' : '🔊'; if (muted) speechSynthesis?.cancel(); };
 $('bTTS').onclick = (e) => { e.stopPropagation(); ttsOn = !ttsOn; $('bTTS').style.opacity = ttsOn ? 1 : 0.4; toast(ttsOn ? (roVoice ? 'Vocile NPC pornite' : 'Telefonul n-are voce în română instalată') : 'Vocile NPC oprite'); };
 
@@ -288,7 +347,8 @@ function labelSprite(text, color = '#ffd23f', size = 1) {
 
 // ---------------- Setup world content after the map loads
 async function setup() {
-  W = await buildWorld(scene);
+  W = await buildWorld(scene, 'assets/map.json', { quality: QUALITY });
+  setTimeOfDay(false);
   const R = W.radius;
   // --- metro Dristor 1
   const metroP = nearestPoi(['subway'], [0, 0], { name: /Dristor 1/ }) || nearestPoi(['subway'], [0, 0]) || { x: 0, z: 0 };
@@ -312,16 +372,16 @@ async function setup() {
   if (amanet && amanet.wall) W.placeSign(amanet, 'pawnbroker');
   if (casino && casino.wall && casino.k === 'bookmaker') W.placeSign(casino, 'gambling');
   const nonstop = nearestPoi(['convenience', 'kiosk', 'alcohol', 'supermarket'], from, { min: 30 });
-  addNPC('geta', null, null, { window: wall });
-  addNPC('farmacista', ...spot(farm, [60, 0])); addNPC('nelu', ...spot(shaorma, [-60, 20])); addNPC('gigi', ...spot(casino, [0, 80])); addNPC('costel', ...spot(amanet, [90, -40]));
-  if (nonstop) addNPC('nonstop', ...spot(nonstop));
-  addNPC('taxi', LOC.metro[0] + 6, LOC.metro[1] + 4);
-  addNPC('bormasina', ...walkable(wall.mx + wall.nx * 3 + wall.ex * 18, wall.mz + wall.nz * 3 + wall.ez * 18));
+  await addNPC('geta', null, null, { window: wall });
+  await addNPC('farmacista', ...spot(farm, [60, 0])); await addNPC('nelu', ...spot(shaorma, [-60, 20])); await addNPC('gigi', ...spot(casino, [0, 80])); await addNPC('costel', ...spot(amanet, [90, -40]));
+  if (nonstop) await addNPC('nonstop', ...spot(nonstop));
+  await addNPC('taxi', LOC.metro[0] + 6, LOC.metro[1] + 4);
+  await addNPC('bormasina', ...walkable(wall.mx + wall.nx * 3 + wall.ex * 18, wall.mz + wall.nz * 3 + wall.ez * 18));
   const bigRoad = W.roads.filter(r => r.k === 'primary' || r.k === 'secondary').sort((a, b) => dist2(a.pts[0], from) - dist2(b.pts[0], from))[0];
-  if (bigRoad) { const q = bigRoad.pts[Math.min(1, bigRoad.pts.length - 1)]; addNPC('manelist', ...walkable(q[0] + bigRoad.w / 2 + 2, q[1])); const car = makeCar('#111'); car.position.set(q[0] + bigRoad.w / 2 - 1.2, 0, q[1] + 3); scene.add(car); }
+  if (bigRoad) { const q = bigRoad.pts[Math.min(1, bigRoad.pts.length - 1)]; await addNPC('manelist', ...walkable(q[0] + bigRoad.w / 2 + 2, q[1])); const car = makeCar('#111'); car.position.set(q[0] + bigRoad.w / 2 - 1.2, 0, q[1] + 3); scene.add(car); }
   const park = W.areas.filter(a => ['park', 'play', 'grass'].includes(a.k)).sort((a, b) => dist2(centroid(a.pts), from) - dist2(centroid(b.pts), from))[0];
-  if (park) addNPC('pensionar', ...walkable(...centroid(park.pts)));
-  const d2p = W.pois.find(p => p.k === 'subway' && /Dristor 2/.test(p.n)); addNPC('politist', ...walkable(d2p ? d2p.x + 5 : LOC.metro[0] - 10, d2p ? d2p.z + 5 : LOC.metro[1] - 10));
+  if (park) await addNPC('pensionar', ...walkable(...centroid(park.pts)));
+  const d2p = W.pois.find(p => p.k === 'subway' && /Dristor 2/.test(p.n)); await addNPC('politist', ...walkable(d2p ? d2p.x + 5 : LOC.metro[0] - 10, d2p ? d2p.z + 5 : LOC.metro[1] - 10));
   // --- Moo Deng at the lake in Parcul IOR (or the biggest park)
   const water = W.areas.filter(a => a.k === 'water').sort((a, b) => polyArea(b.pts) - polyArea(a.pts))[0];
   const ior = W.areas.filter(a => a.k === 'park').sort((a, b) => polyArea(b.pts) - polyArea(a.pts))[0];
@@ -340,7 +400,7 @@ async function setup() {
   P.x = LOC.home[0]; P.z = LOC.home[1]; P.yaw = Math.atan2(-wall.nx, -wall.nz);
   camYaw = P.yaw + Math.PI;
   // --- traffic, pedestrians, stray dogs, collectibles
-  spawnTraffic(); spawnPeds(); spawnSleepingDogs(); spawnCoins();
+  spawnTraffic(); await spawnPeds(); spawnSleepingDogs(); spawnCoins(); spawnTram();
   // --- mission beacon
   beacon = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.4, 120, 16, 1, true), new THREE.MeshBasicMaterial({ color: '#ffd23f', transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }));
   beacon.position.y = 60; scene.add(beacon);
@@ -398,13 +458,15 @@ function addMarket(a) {
 }
 
 // ---------------- NPCs
-function addNPC(id, x, z, opts = {}) {
+async function addNPC(id, x, z, opts = {}) {
   const def = NPC_DEFS[id]; if (!def) return;
   const look = def.look || {};
-  const h = makeHuman({ shirt: look.shirt, pants: look.pants, skin: look.skin || pick(['#e9bf9c', '#dcae8e', '#f1cfb1']), female: look.female, shoes: look.shoes });
-  simpleHead(h.userData.head, { skin: look.skin || '#e2b896', hair: look.hair || '#3a2a20', bald: look.bald, scarf: look.scarf, cap: look.cap, beard: look.beard, glasses: look.glasses });
-  if (look.chain) { const c = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.02, 6, 20), new THREE.MeshStandardMaterial({ color: '#ffcc33', metalness: 1, roughness: .2 })); c.position.set(0, 1.62, 0.12); c.rotation.x = 1.2; h.userData.body.add(c); }
-  const npc = { id, def, name: def.name, obj: h, x, z, yaw: 0, r: 3.2 };
+  const kind = look.female ? (look.scarf ? 'old' : 'female') : 'male';
+  const rig = await makeRigCharacter(kind, { shirt: look.shirt || '#888', pants: look.pants || '#333', skin: look.skin || pick(['#e2b896', '#d6a988', '#eec7a6']), shoes: look.shoes || '#222', hair: look.scarf || look.hair || '#3a2a20' },
+    { scarf: !!look.scarf, cap: !!look.cap, beard: !!look.beard, bald: !!look.bald, glasses: !!look.glasses, long: !!look.female && !look.scarf });
+  const h = rig.root;
+  if (look.chain) { const sp = h.getObjectByName('mixamorigSpine2'); const c = new THREE.Mesh(new THREE.TorusGeometry(9, 0.9, 6, 20), new THREE.MeshStandardMaterial({ color: '#ffcc33', metalness: 1, roughness: .2 })); c.position.set(0, 16, 6); c.rotation.x = 1.25; sp.add(c); }
+  const npc = { id, def, name: def.name, obj: h, rig, x, z, yaw: 0, r: 3.2 };
   if (opts.window) {
     // Tanti Geta leans out of a 2nd-floor window of Câmpi's block
     const w = opts.window, along = 6; x = w.mx + w.ex * along; z = w.mz + w.ez * along;
@@ -412,12 +474,11 @@ function addNPC(id, x, z, opts = {}) {
     frame.position.set(x + w.nx * 0.05, 7.4, z + w.nz * 0.05); frame.lookAt(frame.position.x + w.nx, 7.4, frame.position.z + w.nz); scene.add(frame);
     const sill = new THREE.Mesh(new THREE.BoxGeometry(1.8, .12, .5), new THREE.MeshStandardMaterial({ color: '#ddd' })); sill.position.set(x + w.nx * .25, 6.7, z + w.nz * .25); sill.rotation.y = Math.atan2(w.nx, w.nz); scene.add(sill);
     const pillow = new THREE.Mesh(new THREE.BoxGeometry(1.1, .18, .45), new THREE.MeshStandardMaterial({ color: '#c94f7c' })); pillow.position.set(x + w.nx * .3, 6.82, z + w.nz * .3); pillow.rotation.y = Math.atan2(w.nx, w.nz); scene.add(pillow);
-    h.userData.legs.forEach(l => l.visible = false);
-    h.position.set(x + w.nx * 0.2, 5.25, z + w.nz * 0.2); h.rotation.y = Math.atan2(w.nx, w.nz); h.userData.arms.forEach(a => a.rotation.x = -1.3);
+    h.position.set(x - w.nx * 0.25, 6.1, z - w.nz * 0.25); h.rotation.y = Math.atan2(w.nx, w.nz);
     npc.x = x + w.nx * 3; npc.z = z + w.nz * 3; npc.window = true; npc.r = 10; npc.yaw = h.rotation.y; npc.anchor = new THREE.Vector3(x + w.nx * .3, 7.9, z + w.nz * .3);
   } else { h.position.set(x, 0, z); npc.yaw = rand(0, 6); W.collider.add([[x - .35, z - .35], [x + .35, z - .35], [x + .35, z + .35], [x - .35, z + .35]], { npc: true, h: 99 }); }
   scene.add(h); npcs.push(npc);
-  const tag = labelSprite(def.name, '#ffffff', 0.8); tag.position.set(0, npc.window ? 2.6 : 2.55, 0); h.add(tag); npc.tag = tag;
+  const tag = labelSprite(def.name, '#ffffff', 0.8); tag.position.set(0, 2.25, 0); h.add(tag); npc.tag = tag;
   return npc;
 }
 
@@ -435,19 +496,36 @@ function spawnTraffic() {
     cars.push({ obj: c, r: o.r, L: o.L, s: rand(0, o.L), dir: i % 2 ? 1 : -1, v: rand(9, 13), vmax: rand(9, 14), honk: 0 });
   }
 }
+// ---------------- Tram on the real tram line
+let tram = null;
+function pathPoint(pts, s) { let acc = 0; for (let i = 0; i < pts.length - 1; i++) { const L = Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]); if (acc + L >= s) { const t = (s - acc) / L; return { x: pts[i][0] + (pts[i + 1][0] - pts[i][0]) * t, z: pts[i][1] + (pts[i + 1][1] - pts[i][1]) * t, dx: (pts[i + 1][0] - pts[i][0]) / L, dz: (pts[i + 1][1] - pts[i][1]) / L }; } acc += L; }
+  const n = pts.length, L = Math.hypot(pts[n - 1][0] - pts[n - 2][0], pts[n - 1][1] - pts[n - 2][1]) || 1; return { x: pts[n - 1][0], z: pts[n - 1][1], dx: (pts[n - 1][0] - pts[n - 2][0]) / L, dz: (pts[n - 1][1] - pts[n - 2][1]) / L }; }
+function spawnTram() {
+  if (!W.tramPath || W.tramPath.length < 2) return;
+  const pts = W.tramPath; let L = 0; for (let i = 0; i < pts.length - 1; i++) L += Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]);
+  if (L < 80) return;
+  const side = canvasTex(512, 64, (g, w, h) => { g.fillStyle = '#f1ece2'; g.fillRect(0, 0, w, h); g.fillStyle = '#c8102e'; g.fillRect(0, 44, w, 20); g.fillStyle = '#26333d'; for (let x = 10; x < w - 30; x += 46) g.fillRect(x, 8, 38, 30); g.fillStyle = '#ffd23f'; g.font = 'bold 16px sans-serif'; g.fillText('STB', 460, 58); });
+  const g = new THREE.Group(); const body = new THREE.MeshStandardMaterial({ map: side, roughness: .5 }), end = new THREE.MeshStandardMaterial({ color: '#f1ece2' });
+  for (let k = 0; k < 3; k++) { const m = new THREE.Mesh(new THREE.BoxGeometry(2.4, 3.1, 9.6), [end, end, new THREE.MeshStandardMaterial({ color: '#777' }), end, end, end]); m.position.set(0, 1.9, (k - 1) * 10); m.castShadow = true; g.add(m);
+    const sm = new THREE.Mesh(new THREE.PlaneGeometry(9.4, 2.4), body); sm.position.set(1.21, 1.9, (k - 1) * 10); sm.rotation.y = Math.PI / 2; g.add(sm); const sm2 = sm.clone(); sm2.position.x = -1.21; sm2.rotation.y = -Math.PI / 2; g.add(sm2); }
+  const pan = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.2, 1.6), new THREE.MeshStandardMaterial({ color: '#333' })); pan.position.set(0, 4, 0); pan.rotation.x = 0.6; g.add(pan);
+  const lampM = new THREE.MeshBasicMaterial({ color: '#fff4c8' }); [-0.8, 0.8].forEach(x => { const l = new THREE.Mesh(new THREE.BoxGeometry(.3, .2, .05), lampM); l.position.set(x, 1.1, 14.83); g.add(l); });
+  scene.add(g); tram = { obj: g, pts, L, s: L * 0.3, dir: 1 };
+}
 // ---------------- Pedestrians
-function spawnPeds() {
+async function spawnPeds() {
   const roads = W.roads.filter(r => ['residential', 'tertiary', 'secondary', 'footway', 'pedestrian'].includes(r.k)).map(r => ({ r, L: roadLen(r) })).filter(o => o.L > 40);
   const near = roads.filter(o => Math.hypot(o.r.pts[0][0] - LOC.home[0], o.r.pts[0][1] - LOC.home[1]) < 500);
   const pool = near.length > 10 ? near : roads;
   const SHIRTS = ['#e33', '#39f', '#222', '#fff', '#6c6', '#f6a', '#999', '#ffb000', '#6b3fa0', '#1b1b1b'];
   for (let i = 0; i < (isTouch ? 16 : 26) && pool.length; i++) {
     const o = pick(pool); const female = Math.random() < .45;
-    const h = makeHuman({ shirt: pick(SHIRTS), pants: pick(['#35518a', '#222', '#555', '#6b4a2b']), female, shoes: pick(['#fff', '#222', '#8b5a2b']) });
-    simpleHead(h.userData.head, { hair: pick(['#111', '#3a2a20', '#8a5a2b', '#ccc', '#d4a24c']), bald: !female && Math.random() < .2, scarf: female && Math.random() < .2 ? pick(['#c0392b', '#2c3e50', '#8e44ad']) : null, cap: Math.random() < .2 ? pick(['#111', '#d7263d', '#fff']) : null, beard: !female && Math.random() < .3 });
-    scene.add(h);
+    const scarf = female && Math.random() < .2 ? pick(['#c0392b', '#2c3e50', '#8e44ad']) : null;
+    const rig = await makeRigCharacter(female ? (scarf ? 'old' : 'female') : 'male', { shirt: pick(SHIRTS), pants: pick(['#35518a', '#222', '#555', '#6b4a2b']), shoes: pick(['#fff', '#222', '#8b5a2b']), skin: pick(['#e2b896', '#d6a988', '#eec7a6', '#c99a7a']), hair: scarf || pick(['#111', '#3a2a20', '#8a5a2b', '#ccc', '#d4a24c']) },
+      { scarf: !!scarf, bald: !female && Math.random() < .2, cap: !female && Math.random() < .2, beard: !female && Math.random() < .3, long: female && !scarf, glasses: Math.random() < .15 });
+    const h = rig.root; if (female) h.scale.setScalar(0.94); scene.add(h);
     const side = Math.random() < .5 ? 1 : -1;
-    peds.push({ obj: h, r: o.r, L: o.L, s: rand(0, o.L), dir: side, off: side * (o.r.w / 2 + 1.6), v: rand(1.1, 1.7), name: pick(['Un vecin', 'O vecină', 'Un trecător', 'Nea Costică', 'Doamna de la 2', 'Un puști', 'Un tip dubios']), pause: 0 });
+    peds.push({ obj: h, rig, r: o.r, L: o.L, s: rand(0, o.L), dir: side, off: side * (o.r.w / 2 + 1.6), v: rand(1.1, 1.7), name: pick(['Un vecin', 'O vecină', 'Un trecător', 'Nea Costică', 'Doamna de la 2', 'Un puști', 'Un tip dubios']), pause: 0 });
   }
 }
 // ---------------- Stray dogs
@@ -597,19 +675,21 @@ function update(dt) {
       } else { animateHippo(n.obj, Math.sin(T) > .6 ? 2 : 0, dt); n.yaw += Math.sin(T * .7) * dt * .5; }
       n.obj.position.set(n.x, 0, n.z); n.obj.rotation.y = n.yaw; continue;
     }
-    if (n.window) { n.obj.userData.arms[1].rotation.x = -1.3 + (dlg.npc === n ? Math.sin(T * 8) * .4 : 0); continue; }
+    const talkNow = dlg.npc === n;
+    if (n.rig) { const A = n.rig.actions.agree; if (talkNow && !n.talkAnim && A) { A.reset().setEffectiveWeight(0.8).play(); n.talkAnim = true; } else if (!talkNow && n.talkAnim && A) { A.stop(); n.talkAnim = false; } }
+    if (n.window) { n.rig.setWalk(0, dt); continue; }
     const face = Math.hypot(n.x - P.x, n.z - P.z) < 8 ? Math.atan2(P.x - n.x, P.z - n.z) : n.yaw;
     n.obj.rotation.y = lerpAngle(n.obj.rotation.y, face, dt * 4);
-    animateHuman(n.obj, 0, dt, T + n.x);
-    if (dlg.npc === n) { n.obj.userData.arms[1].rotation.x = -0.6 + Math.sin(T * 7) * 0.5; n.obj.userData.head.rotation.x = Math.sin(T * 9) * 0.06; }
+    n.rig.setWalk(0, dt);
   }
   // ---- pedestrians
   for (const p of peds) {
-    if (p.pause > 0) { p.pause -= dt; animateHuman(p.obj, 0, dt, T); continue; }
+    const farPed = Math.hypot(p.obj.position.x - P.x, p.obj.position.z - P.z) > 150;   // far away: skip animation work
+    if (p.pause > 0) { p.pause -= dt; p.rig.setWalk(0, dt); continue; }
     p.s += p.dir * p.v * dt; if (p.s < 0 || p.s > p.L) { p.dir *= -1; p.s = clamp(p.s, 0, p.L); }
     const q = roadPoint(p.r, p.s); const ox = -q.dz * p.off, oz = q.dx * p.off;
     let x = q.x + ox, z = q.z + oz; [x, z] = W.collider.resolve(x, z, 0.35);
-    p.obj.position.set(x, 0, z); p.obj.rotation.y = Math.atan2(q.dx * p.dir, q.dz * p.dir); animateHuman(p.obj, p.v, dt, T);
+    p.obj.position.set(x, 0, z); p.obj.rotation.y = Math.atan2(q.dx * p.dir, q.dz * p.dir); if (!farPed) p.rig.setWalk(p.v, dt);
   }
   // ---- traffic
   for (const c of cars) {
@@ -675,7 +755,7 @@ function update(dt) {
     if (dlg.talking === 'me' || n.hippo) { camPos.set(P.x + ddx * 1.25 + px * 0.45, P.y + 1.78, P.z + ddz * 1.25 + pz * 0.45); camTarget.copy(head); }
     else { camPos.set(P.x - ddx * 1.7 + px * 0.8, P.y + 2.0, P.z - ddz * 1.7 + pz * 0.8); camTarget.set(nx, ny * 0.86, nz); }
     camera.position.lerp(camPos, Math.min(1, dt * 5)); camera.lookAt(camTarget);
-    sun.position.set(P.x + 60, 110, P.z + 40); sun.target.position.set(P.x, 0, P.z);
+    sun.position.set(P.x + SUN_OFF.x, SUN_OFF.y, P.z + SUN_OFF.z); sun.target.position.set(P.x, 0, P.z);
     drawMinimap(targetPos()); return;
   }
   const cp = Math.cos(camPitch), sp = Math.sin(camPitch);
@@ -687,9 +767,20 @@ function update(dt) {
   }
   camPos.set(camTarget.x + dx * dist, camTarget.y + dy * dist, camTarget.z + dz * dist);
   camera.position.lerp(camPos, Math.min(1, dt * 10)); camera.lookAt(camTarget);
-  sun.position.set(P.x + 60, 110, P.z + 40); sun.target.position.set(P.x, 0, P.z);
+  sun.position.set(P.x + SUN_OFF.x, SUN_OFF.y, P.z + SUN_OFF.z); sun.target.position.set(P.x, 0, P.z);
   // ---- minimap
   drawMinimap(tgt);
+  updateEnvAudio(dt);
+  // ---- night: move the pool of real point lights to the nearest street lamps
+  if (NIGHT && W.lamps && (T - (state.lampT || 0) > 0.4)) { state.lampT = T;
+    const near = W.lamps.map(l => [l, (l[0] - P.x) ** 2 + (l[1] - P.z) ** 2]).sort((a, b) => a[1] - b[1]);
+    nightLights.forEach((L, i) => { const e = near[i]; if (!e) { L.intensity = 0; return; } L.position.set(e[0][0], 6.9, e[0][1]); L.intensity = 60; }); }
+  if (!NIGHT && nightLights[0].intensity) nightLights.forEach(L => L.intensity = 0);
+  // ---- tram
+  if (tram) { tram.s += tram.dir * 9 * dt; if (tram.s > tram.L) { tram.s = tram.L; tram.dir = -1; } if (tram.s < 0) { tram.s = 0; tram.dir = 1; }
+    const q = pathPoint(tram.pts, tram.s), fx = q.dx * tram.dir, fz = q.dz * tram.dir; tram.obj.position.set(q.x, 0, q.z); tram.obj.rotation.y = Math.atan2(fx, fz);
+    const px = P.x - q.x, pz = P.z - q.z, ahead = px * fx + pz * fz, lat = Math.abs(-px * fz + pz * fx);
+    if (Math.abs(ahead) < 15 && lat < 1.6 && P.hurt <= 0 && P.y < 2.5) { P.knock.set(fx * 16 + -fz * 6, fz * 16 + fx * 6); P.vy = 7; P.hurt = 1.4; state.hits++; SFX.hit(); SFX.horn(); campiSay('Au! Futu-i!'); flash(); money(-10); toast('Te-a luat tramvaiul. La propriu.', 2500); if (P.scooter) toggleScooter(false); } }
 }
 async function finale() {
   state.finale = true; SFX.finale(); voice('stutter'); bigmsg('SIX SEVEN!'); state.happy = 6;
@@ -727,4 +818,4 @@ $('play').onclick = () => {
   voice('start');
   setTimeout(() => phone('Mama', 'Câmpi, unde ești?? Treci pe la Tanti Geta, că te-a căutat. Stă la geam, ca de obicei. Și ia pâine!'), 1200);
 };
-window.__g = { camPos, camTarget, setCam(y, p, d) { camYaw = y; camPitch = p; if (d) camDist = d; lastLook = performance.now() + 1e6; }, state, P, npcs, LOC, setMission, talkTo, get W() { return W; }, camera, scene, renderer, update, input };
+window.__g = { setTimeOfDay: (n) => setTimeOfDay(n), camPos, camTarget, setCam(y, p, d) { camYaw = y; camPitch = p; if (d) camDist = d; lastLook = performance.now() + 1e6; }, state, P, npcs, LOC, setMission, talkTo, get W() { return W; }, camera, scene, renderer, update, input };
