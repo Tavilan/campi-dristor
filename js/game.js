@@ -458,22 +458,31 @@ function buildMinimap() {
   g.fillStyle = '#1b4f9c'; for (const p of W.pois.filter(p => p.k === 'subway')) { g.beginPath(); g.arc(tx(p.x), tx(p.z), 6, 0, 7); g.fill(); }
 }
 function drawMinimap(target) {
-  const c = $('minimap'), g = c.getContext('2d'), s = c.width, R = W.radius, zoom = 1.6;
+  // North-up minimap: the map never rotates; only the player arrow and the camera view cone turn.
+  const c = $('minimap'), g = c.getContext('2d'), s = c.width, R = W.radius, k = 0.8; // k = minimap px per metre
   g.save(); g.clearRect(0, 0, s, s); g.beginPath(); g.arc(s / 2, s / 2, s / 2, 0, 7); g.clip();
-  g.translate(s / 2, s / 2); g.rotate(-(camYaw - Math.PI)); g.scale(zoom * 0.5, zoom * 0.5);
-  const half = s / (zoom * 0.5) * 0.75, cx = (P.x + R) * mapScale, cz = (P.z + R) * mapScale;
-  g.drawImage(mapCanvas, cx - half, cz - half, half * 2, half * 2, -half, -half, half * 2, half * 2);
+  g.fillStyle = '#b7b09a'; g.fillRect(0, 0, s, s);
+  const src = (s / k) * mapScale, cx = (P.x + R) * mapScale, cz = (P.z + R) * mapScale;
+  g.imageSmoothingEnabled = true;
+  g.drawImage(mapCanvas, cx - src / 2, cz - src / 2, src, src, 0, 0, s, s);
+  // camera view cone (where the camera is looking)
+  const look = Math.PI - (camYaw + Math.PI);
+  g.translate(s / 2, s / 2); g.rotate(look);
+  const cone = g.createRadialGradient(0, 0, 4, 0, 0, s * 0.45); cone.addColorStop(0, 'rgba(255,255,255,.45)'); cone.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = cone; g.beginPath(); g.moveTo(0, 0); g.arc(0, 0, s * 0.45, -Math.PI / 2 - 0.55, -Math.PI / 2 + 0.55); g.closePath(); g.fill();
   g.restore();
-  // target
+  // mission target (clamped to the rim when far away)
   if (target) {
-    const dx = target[0] - P.x, dz = target[1] - P.z, a = -(camYaw - Math.PI);
-    let rx = (dx * Math.cos(a) - dz * Math.sin(a)) * mapScale * zoom * .5, rz = (dx * Math.sin(a) + dz * Math.cos(a)) * mapScale * zoom * .5;
+    let rx = (target[0] - P.x) * k, rz = (target[1] - P.z) * k;
     const L = Math.hypot(rx, rz), m = s / 2 - 10; if (L > m) { rx *= m / L; rz *= m / L; }
     g.fillStyle = '#ffd23f'; g.strokeStyle = '#1b1420'; g.lineWidth = 3; g.beginPath(); g.arc(s / 2 + rx, s / 2 + rz, 8, 0, 7); g.fill(); g.stroke();
   }
-  // player arrow
-  g.save(); g.translate(s / 2, s / 2); g.rotate(-(P.yaw - camYaw + Math.PI)); g.fillStyle = '#ff3d8b'; g.strokeStyle = '#fff'; g.lineWidth = 2;
+  // player arrow: points where Câmpi faces
+  g.save(); g.translate(s / 2, s / 2); g.rotate(Math.PI - P.yaw); g.fillStyle = '#ff3d8b'; g.strokeStyle = '#fff'; g.lineWidth = 2;
   g.beginPath(); g.moveTo(0, -10); g.lineTo(7, 8); g.lineTo(0, 4); g.lineTo(-7, 8); g.closePath(); g.fill(); g.stroke(); g.restore();
+  // north marker
+  g.font = 'bold 13px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineWidth = 3; g.strokeStyle = '#1b1420'; g.fillStyle = '#fff';
+  g.strokeText('N', s / 2, 11); g.fillText('N', s / 2, 11);
 }
 
 // ---------------- Mission target resolution
