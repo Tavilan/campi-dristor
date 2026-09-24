@@ -283,15 +283,30 @@ export function buildDetails(W, opts = {}) {
   const mMat = new THREE.MeshStandardMaterial({ map: mTex, emissive: '#ffffff', emissiveMap: mTex, emissiveIntensity: 0.45 });
   const metroOut = [];
   const GRAN = tpl([[BOX, '#7d7a76', 0, 0.5, 0]]);
-  for (const p of W.pois.filter(p => p.k === 'subway')) {
-    const nr = nearestRoad(p.x, p.z, 6); const ux = nr ? nr.s.x2 - nr.s.x1 : 1, uz = nr ? nr.s.z2 - nr.s.z1 : 0, L = Math.hypot(ux, uz) || 1;
-    const ex = ux / L, ez = uz / L, a = Math.atan2(ex, ez);          // stairs run along the street
-    let sx = p.x, sz = p.z; const len = 7, wid = 3.2;
-    if (nr) { const ox = sx - nr.px, oz = sz - nr.pz, od = Math.hypot(ox, oz) || 1, need = nr.s.w / 2 + wid / 2 + 0.8;   // entrances sit on the sidewalk, never on the carriageway
-      const px = od > 0.01 ? ox / od : ez, pz = od > 0.01 ? oz / od : -ex;
-      if (od < need) { sx = nr.px + px * need; sz = nr.pz + pz * need; }
-      for (let k = 0; k < 12; k++) { const corners = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([u, v]) => [sx + ez * u * (wid / 2 + 0.4) + ex * v * (len / 2 + 0.3), sz - ex * u * (wid / 2 + 0.4) + ez * v * (len / 2 + 0.3)]);
-        if (corners.every(([cx, cz]) => W.carriageDist(cx, cz) > 0.2)) break; sx += px * 0.8; sz += pz * 0.8; } }
+  // Which entrances exist: OSM station nodes are not entrances; at Dristor 1 there is a single real entrance, on the corner
+  // with Farmacia Tei and the Luca pastry shop (NW of the Luca kiosk) - the two mapped east of the station do not exist.
+  const stations = W.pois.filter(p => p.k === 'subway' && /^Dristor [12]$/.test(p.n || ''));
+  const d1 = stations.find(p => p.n === 'Dristor 1'), d2 = stations.find(p => p.n === 'Dristor 2');
+  const entrances = W.pois.filter(p => p.k === 'subway' && !/^Dristor [12]$/.test(p.n || '') && !(d1 && p.x - d1.x > 60 && Math.abs(p.z - d1.z) < 80));
+  entrances.forEach(p => { if (d2 && !p.label) { const near = entrances.reduce((b, q) => Math.hypot(q.x - d2.x, q.z - d2.z) < Math.hypot(b.x - d2.x, b.z - d2.z) ? q : b, entrances[0]); if (near === p) p.label = 'Dristor 2'; } });
+  if (d1) { const tei = W.pois.filter(p => /farmacia tei/i.test(p.n || '') && p.wall).sort((a, b) => Math.hypot(a.x - d1.x, a.z - d1.z) - Math.hypot(b.x - d1.x, b.z - d1.z))[0];
+    if (tei) { const w = tei.wall, ux = -w.nz, uz = w.nx;
+      // the Luca pastry sign next to the pharmacy, on the side that points south-east
+      const sd = (ux * 1 + uz * 1) > 0 ? 1 : -1, lw = { ...w, px: w.px + ux * sd * 6.6, pz: w.pz + uz * sd * 6.6 };
+      W.placeSign({ wall: lw }, ['LUCACIU', 'COVRIGI · PATISERIE', '#f7a600', '#fff']);
+      entrances.push({ x: lw.px - ux * sd * 16 + w.nx * 5 - 4, z: lw.pz - uz * sd * 16 + w.nz * 5 - 4, k: 'subway', n: 'Dristor 1', label: 'Dristor 1' }); } }
+  for (const p of entrances) {
+    // entrances sit on the sidewalk, never on the carriageway: spiral out from the OSM point until the whole
+    // footprint (plus the exit in front of it) is clear of every road and building
+    const len = 7, wid = 3.2;
+    const orient = (x, z) => { const nr = nearestRoad(x, z, 6); const ux = nr ? nr.s.x2 - nr.s.x1 : 1, uz = nr ? nr.s.z2 - nr.s.z1 : 0, L = Math.hypot(ux, uz) || 1; return [ux / L, uz / L]; };
+    const clear = (x, z, ex, ez) => { for (const u of [-1, 0, 1]) for (const v of [-1, 0, 1, 1.6]) { const cx = x + ez * u * (wid / 2 + 0.5) + ex * v * (len / 2 + 0.4), cz = z - ex * u * (wid / 2 + 0.5) + ez * v * (len / 2 + 0.4);
+      if (W.carriageDist(cx, cz) < 0.6) return false; if (collider.near(cx, cz).some(q => q.data?.building !== undefined && Collider.inside(q.pts, cx, cz))) return false; } return true; };
+    let sx = p.x, sz = p.z, [ex, ez] = orient(sx, sz), found = clear(sx, sz, ex, ez);
+    for (let r = 1.5; r <= 45 && !found; r += 1.5) for (let k = 0; k < 24 && !found; k++) { const ang = k / 24 * Math.PI * 2, x = p.x + Math.cos(ang) * r, z = p.z + Math.sin(ang) * r; const [ox, oz] = orient(x, z);
+      if (clear(x, z, ox, oz)) { sx = x; sz = z; ex = ox; ez = oz; found = true; } else if (clear(x, z, oz, -ox)) { sx = x; sz = z; ex = oz; ez = -ox; found = true; } }
+    if (!found) continue;                                   // better no entrance than one in the middle of the road
+    const a = Math.atan2(ex, ez);
     const pit = new THREE.Mesh(new THREE.PlaneGeometry(wid, len), stairMat); pit.rotation.x = -Math.PI / 2; pit.rotation.z = a + Math.PI; pit.position.set(sx, 0.24, sz); pit.receiveShadow = true; root.add(pit);
     // parapets on both long sides + the back (entry is the front end)
     for (const sd of [-1, 1]) B.add(GRAN, sx + ez * sd * (wid / 2 + 0.15), 0, sz - ex * sd * (wid / 2 + 0.15), a, 0.3, 1.0, len);
@@ -306,7 +321,7 @@ export function buildDetails(W, opts = {}) {
     const cube = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.1, 1.1), mMat); cube.position.set(fx, 3.75, fz); cube.rotation.y = a; root.add(cube);
     collider.add([[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([u, v]) => [sx + ez * u * (wid / 2 + 0.35) + ex * v * (len / 2 + 0.3), sz - ex * u * (wid / 2 + 0.35) + ez * v * (len / 2 + 0.3)]), { h: 1.0 });
     box(fx, fz, a, 0.2, 0.2, 99);
-    metroOut.push({ x: sx + ex * (len / 2 + 2.2), z: sz + ez * (len / 2 + 2.2), name: p.n, a }); count('metro');
+    metroOut.push({ x: sx + ex * (len / 2 + 2.2), z: sz + ez * (len / 2 + 2.2), name: p.label || '', a }); count('metro');
   }
   world.userData.metroMats = [mMat];
 

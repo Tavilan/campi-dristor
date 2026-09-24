@@ -227,6 +227,18 @@ export async function buildWorld(scene, url = 'assets/map.json', opts = {}) {
   const segDist = (G, x, z) => { const L = G.get(Math.floor(x / SGW) * 10000 + Math.floor(z / SGW)); if (!L) return 99; let best = 99;
     for (const s of L) { const ex = s.x2 - s.x1, ez = s.z2 - s.z1, L2 = ex * ex + ez * ez || 1; let t = ((x - s.x1) * ex + (z - s.z1) * ez) / L2; t = t < 0 ? 0 : t > 1 ? 1 : t; const d = Math.hypot(x - s.x1 - ex * t, z - s.z1 - ez * t) - s.hw; if (d < best) best = d; } return best; };
   const carriageDist = (x, z) => segDist(segCar, x, z), footDist = (x, z) => segDist(segFoot, x, z);
+  // every sign on a wall reserves its rectangle: a new sign that would overlap an existing one slides along the wall, or is dropped
+  const signRects = [];
+  function reserveSign(x, z, nx, nz, w, y, h, text, wallL = 99) {
+    const ux = -nz, uz = nx;
+    if (text && signRects.some(r => r.text === text && Math.hypot(r.x - x, r.z - z) < 30)) return null;   // same brand twice on one corner
+    const hits = (px, pz) => signRects.some(r => (r.nx * nx + r.nz * nz) > 0.5 && Math.abs((px - r.x) * nx + (pz - r.z) * nz) < 1.5 &&
+      Math.abs((px - r.x) * ux + (pz - r.z) * uz) < (w + r.w) / 2 + 0.25 && Math.abs(y - r.y) < (h + r.h) / 2 + 0.15);
+    const step = (w + 0.3) / 2, lim = Math.max(0, wallL / 2 - w / 2);
+    for (const k of [0, 1, -1, 2, -2, 3, -3, 4, -4]) { const d = k * step; if (Math.abs(d) > lim + 0.01 && k) continue; const px = x + ux * d, pz = z + uz * d;
+      if (!hits(px, pz)) { const r = { x: px, z: pz, nx, nz, w, y, h, text }; signRects.push(r); return r; } }
+    return null;
+  }
   const offRoad = (x, z, r = 0.5) => carriageDist(x, z) > r && footDist(x, z) > r * 0.5;
   function nearestCarriage(x, z) { let best = null; for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) { const L = segCar.get((Math.floor(x / SGW) + dx) * 10000 + Math.floor(z / SGW) + dz); if (!L) continue;
     for (const s of L) { const ex = s.x2 - s.x1, ez = s.z2 - s.z1, L2 = ex * ex + ez * ez || 1; let t = ((x - s.x1) * ex + (z - s.z1) * ez) / L2; t = t < 0 ? 0 : t > 1 ? 1 : t; const px = s.x1 + ex * t, pz = s.z1 + ez * t, d = Math.hypot(x - px, z - pz); if (!best || d < best.d) best = { d, px, pz, s }; } } return best; }
@@ -256,24 +268,29 @@ export async function buildWorld(scene, url = 'assets/map.json', opts = {}) {
   groundMacro.onBeforeCompile = (sh) => { sh.uniforms.detailMap = { value: detailTex }; sh.uniforms.detailRep = { value: RG / 3.5 };
     sh.fragmentShader = 'uniform sampler2D detailMap; uniform float detailRep;\n' + sh.fragmentShader.replace('#include <map_fragment>', '#include <map_fragment>\n diffuseColor.rgb *= texture2D(detailMap, vMapUv * detailRep).rgb * 1.25;'); };
   const ground = new THREE.Mesh(new THREE.CircleGeometry(RG, 64), groundMacro);
-  ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; world.add(ground);
+  ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; ground.renderOrder = -10; world.add(ground);
 
   // Areas (parks, water, parking, markets...)
   const AREA_COL = { wood: '#5e9443', wetland: '#7f9c5a', dog: '#9a8f6e', pool: '#5fb3d6', pier: '#8a6a48', park: '#6fae4f', grass: '#86b85e', play: '#c9a27a', pitch: '#4f9a4a', water: '#4d8fb5', parking: '#6d6a66', market: '#b8a991', retail: '#a8a39a', garages: '#8f8a80', school: '#b9ad8f', rail: '#8b8176', construction: '#b39b76' };
   const AREA_Y = { wood: 0.05, wetland: 0.045, dog: 0.05, pool: 0.08, pier: 0.3, water: 0.03, park: 0.05, grass: 0.05, play: 0.06, pitch: 0.07, parking: 0.04, market: 0.045, retail: 0.035, garages: 0.035, school: 0.035, rail: 0.035, construction: 0.04 };
-  { const pos = [], col = [];
+  // Ground-level layers are drawn in a fixed order without depth writes, so overlapping polygons (a lake inside a park,
+  // grass patches inside the park, the park over the ground) never z-fight, however far the camera is
+  const AREA_ORDER = ['retail', 'school', 'rail', 'construction', 'garages', 'park', 'wood', 'grass', 'wetland', 'dog', 'parking', 'market', 'play', 'pitch', 'water', 'pool'];
+  { const groups = new Map();
     for (const a of M.areas) {
       const pts = D(a.p); if (pts.length < 3) continue;
       const contour = pts.map(([x, z]) => new THREE.Vector2(x, z));
       const holes = (a.h || []).map(h => D(h).map(([x, z]) => new THREE.Vector2(x, z)));
       let tris; try { tris = THREE.ShapeUtils.triangulateShape(contour, holes); } catch (e) { continue; }
       const all = contour.concat(...holes);
-      const y = AREA_Y[a.k] ?? 0.03, c = colorArr(AREA_COL[a.k] || '#999', 0.04);
-      for (const t of tris) for (const i of [t[0], t[2], t[1]]) { pos.push(all[i].x, y, all[i].y); col.push(...c); }
+      const flat = a.k !== 'pier', y = flat ? 0.03 : AREA_Y[a.k], c = colorArr(AREA_COL[a.k] || '#999', 0.04);
+      const key = flat ? a.k : '_raised'; if (!groups.has(key)) groups.set(key, { pos: [], col: [] }); const G = groups.get(key);
+      for (const t of tris) for (const i of [t[0], t[2], t[1]]) { G.pos.push(all[i].x, y, all[i].y); G.col.push(...c); }
       if (a.k === 'water') collider.add(pts, { water: true });
     }
-    const m = new THREE.Mesh(geo(pos, null, col), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, side: THREE.DoubleSide }));
-    m.receiveShadow = true; world.add(m); }
+    for (const [k, G] of groups) { const flat = k !== '_raised', o = AREA_ORDER.indexOf(k);
+      const m = new THREE.Mesh(geo(G.pos, null, G.col), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: k === 'water' || k === 'pool' ? 0.3 : 0.95, metalness: k === 'water' ? 0.1 : 0, side: THREE.DoubleSide, depthWrite: !flat }));
+      if (flat) m.renderOrder = -9 + (o < 0 ? AREA_ORDER.length : o) * 0.01; m.receiveShadow = true; world.add(m); } }
 
   // Roads: sidewalk band + asphalt ribbon + round joints + lane markings
   { const pos = [], col = [], mpos = [];
@@ -333,16 +350,17 @@ export async function buildWorld(scene, url = 'assets/map.json', opts = {}) {
       for (let i = 0; i < 4; i++) { g.fillStyle = 'rgba(30,30,30,.35)'; g.beginPath(); g.ellipse(Math.random() * w, Math.random() * h, 6 + Math.random() * 10, 4 + Math.random() * 6, Math.random() * 3, 0, 7); g.fill(); }   // gropi
     }, [1, 1]);
     const rgeo = geo(pos, null, col); { const P = rgeo.attributes.position.array, uvs = new Float32Array(P.length / 3 * 2); for (let i = 0, j = 0; i < P.length; i += 3, j += 2) { uvs[j] = P[i] / 9; uvs[j + 1] = P[i + 2] / 9; } rgeo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2)); }
-    const rm = new THREE.Mesh(rgeo, new THREE.MeshStandardMaterial({ map: asphalt, vertexColors: true, roughness: 0.92, side: THREE.DoubleSide }));
-    rm.receiveShadow = true; world.add(rm);
-    const mm = new THREE.Mesh(geo(mpos), new THREE.MeshBasicMaterial({ color: '#e8e4d8', side: THREE.DoubleSide })); world.add(mm);
+    // roads: drawn in buffer order (footways first, trunk roads last, curbs on top) with no depth writes -> no z-fighting at junctions
+    const rm = new THREE.Mesh(rgeo, new THREE.MeshStandardMaterial({ map: asphalt, vertexColors: true, roughness: 0.92, side: THREE.DoubleSide, depthWrite: false }));
+    rm.receiveShadow = true; rm.renderOrder = -5; world.add(rm);
+    const mm = new THREE.Mesh(geo(mpos), new THREE.MeshBasicMaterial({ color: '#e8e4d8', side: THREE.DoubleSide, depthWrite: false })); mm.renderOrder = -4; world.add(mm);
     // tram rails
     const rp = [];
     for (const r of M.rails) { const pts = D(r.p); for (const off of [-0.72, 0.72]) for (let i = 0; i < pts.length - 1; i++) {
       const [x1, z1] = pts[i], [x2, z2] = pts[i + 1]; const L = Math.hypot(x2 - x1, z2 - z1) || 1; const nx = -(z2 - z1) / L, nz = (x2 - x1) / L;
       const a = [x1 + nx * off, z1 + nz * off], b = [x2 + nx * off, z2 + nz * off], w = .07;
       rp.push(a[0] + nx * w, .22, a[1] + nz * w, b[0] + nx * w, .22, b[1] + nz * w, b[0] - nx * w, .22, b[1] - nz * w, a[0] + nx * w, .22, a[1] + nz * w, b[0] - nx * w, .22, b[1] - nz * w, a[0] - nx * w, .22, a[1] - nz * w); } }
-    if (rp.length) world.add(new THREE.Mesh(geo(rp), new THREE.MeshStandardMaterial({ color: '#8a8580', metalness: .8, roughness: .3 })));
+    if (rp.length) { const rl = new THREE.Mesh(geo(rp), new THREE.MeshStandardMaterial({ color: '#8a8580', metalness: .8, roughness: .3, depthWrite: false })); rl.renderOrder = -3; world.add(rl); }
   }
 
   // Buildings: extruded footprints. Facades use an atlas addressed in meters.
@@ -403,7 +421,8 @@ export async function buildWorld(scene, url = 'assets/map.json', opts = {}) {
     pushQuadAO(B.pos, B.uv, B.col, [x1 + nx, y0, z1 + nz], [x1 + nx, y1, z1 + nz], [x2 + nx, y1, z2 + nz], [x2 + nx, y0, z2 + nz],
       [per / t[0], y0 / t[1]], [per / t[0], y1 / t[1]], [(per + L) / t[0], y1 / t[1]], [(per + L) / t[0], y0 / t[1]], colBot, colTop);
   };
-  const labelPlane = (text, w, hgt, fg, bg, x, y, z, nx, nz, glow = 0.6) => {
+  const labelPlane = (text, w, hgt, fg, bg, x, y, z, nx, nz, glow = 0.6, wallL = 99) => {
+    const rs = reserveSign(x, z, nx, nz, w, y, hgt, text, wallL); if (!rs) return null; x = rs.x; z = rs.z;
     const t = canvasTex(1024, Math.round(1024 * hgt / w), (g, W2, H2) => { if (bg) { g.fillStyle = bg; g.fillRect(0, 0, W2, H2); } g.fillStyle = fg; g.font = `900 ${Math.round(H2 * 0.72)}px Trebuchet MS, Arial, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, W2 / 2, H2 * 0.54, W2 - 30); });
     const m = new THREE.Mesh(new THREE.PlaneGeometry(w, hgt), new THREE.MeshStandardMaterial({ map: t, transparent: !bg, emissive: '#ffffff', emissiveMap: t, emissiveIntensity: glow, roughness: 0.4 }));
     m.position.set(x + nx * 0.15, y, z + nz * 0.15); m.lookAt(m.position.x + nx, y, m.position.z + nz); world.add(m); signCacheExtra.push(m.material); return m;
@@ -431,7 +450,7 @@ export async function buildWorld(scene, url = 'assets/map.json', opts = {}) {
       } else if (type === 'complex') {
         strip('shop', x1, z1, x2, z2, 0, 3.8, per, L, dimc(1), dimc(0.75));
         strip('fins', x1, z1, x2, z2, 3.8, h, per, L, dimc(1), dimc(0.85));
-        if (L > 7) for (let s = 3; s + 5 < L; s += 11) { const t = (s + 2.5) / L; const sx = x1 + (x2 - x1) * t, sz = z1 + (z2 - z1) * t; if (signPts.some(([px, pz]) => Math.abs(px - sx) < 10 && Math.abs(pz - sz) < 10)) continue; labelPlane(COMPLEX_SIGNS[(hash(bi * 3 + i * 11 + s) * COMPLEX_SIGNS.length) | 0], 4.6, 0.8, '#fff', BRAND[(hash(bi + s + i) * BRAND.length) | 0], x1 + (x2 - x1) * t, 3.3, z1 + (z2 - z1) * t, nx, nz, 0.35); }
+        if (L > 7) for (let s = 3; s + 5 < L; s += 11) { const t = (s + 2.5) / L; const sx = x1 + (x2 - x1) * t, sz = z1 + (z2 - z1) * t; if (signPts.some(([px, pz]) => Math.abs(px - sx) < 10 && Math.abs(pz - sz) < 10)) continue; labelPlane(COMPLEX_SIGNS[(hash(bi * 3 + i * 11 + s) * COMPLEX_SIGNS.length) | 0], 4.6, 0.8, '#fff', BRAND[(hash(bi + s + i) * BRAND.length) | 0], x1 + (x2 - x1) * t, 3.3, z1 + (z2 - z1) * t, nx, nz, 0.35, 5); }
       } else if (type === 'civic') {
         strip('civic', x1, z1, x2, z2, 0, h, per, L, colorArr(/kindergarten|grădiniț/i.test((b.k || '') + (b.n || '')) ? '#fff0e0' : '#ffffff'), dimc(0.7));
       } else if (type === 'church') {
@@ -506,7 +525,7 @@ export async function buildWorld(scene, url = 'assets/map.json', opts = {}) {
       const u1 = per / (isGarage ? 8 : 6.4 * 8), u2 = (per + L) / (isGarage ? 8 : 6.4 * 8), v2 = isGarage ? 1 : (h - GH) / (2.75 * 8);
       if (GH) {
         const gu1 = per / 12.8, gu2 = (per + L) / 12.8;
-        pushQuadAO(ground.pos, ground.uv, ground.col, [x1, 0, z1], [x1, GH, z1], [x2, GH, z2], [x2, 0, z2], [gu1, 0], [gu1, 1], [gu2, 1], [gu2, 0], dim(tint, 0.62), dim(tint, 0.92));
+        pushQuadAO(ground.pos, ground.uv, ground.col, [x1, 0, z1], [x1, GH, z1], [x2, GH, z2], [x2, 0, z2], [-gu1, 0], [-gu1, 1], [-gu2, 1], [-gu2, 0], dim(tint, 0.62), dim(tint, 0.92));   // (u runs right-to-left seen from outside: negate so text reads correctly)
       }
       pushQuadAO(tgt.pos, tgt.uv, tgt.col, [x1, GH, z1], [x1, h, z1], [x2, h, z2], [x2, GH, z2], [u1, 0], [u1, v2], [u2, v2], [u2, 0], dim(tint, GH ? 0.9 : 0.66), tint);
       // parapet (atic) above the roof
@@ -525,7 +544,7 @@ export async function buildWorld(scene, url = 'assets/map.json', opts = {}) {
     // branded standalone buildings (fast food, fuel shop, supermarket in a block...): parody sign on the longest wall
     if (!stype && !isGarage) { const pb = parodyFor(b.b, b.n);
       if (pb) { let lg = null; for (let i = 0; i < n; i++) { const [x1, z1] = pts[i], [x2, z2] = pts[(i + 1) % n]; const L = Math.hypot(x2 - x1, z2 - z1); if (!lg || L > lg.L) lg = { L, mx: (x1 + x2) / 2, mz: (z1 + z2) / 2, nx: (z2 - z1) / L, nz: -(x2 - x1) / L }; }
-        const w = Math.min(10, lg.L * 0.7); labelPlane(pb[0], w, w / 5, pb[3], pb[2], lg.mx, Math.min(h - 0.4, block ? 3.4 : h - 0.6), lg.mz, lg.nx, lg.nz, 0.5); } }
+        const w = Math.min(10, lg.L * 0.7); labelPlane(pb[0], w, w / 5, pb[3], pb[2], lg.mx, Math.min(h - 0.4, block ? 3.4 : h - 0.6), lg.mz, lg.nx, lg.nz, 0.5, lg.L); } }
     if (!isGarage && h > 20 && hash(bi * 3) < 0.8) { let cx = 0, cz = 0; for (const [x, z] of pts) { cx += x; cz += z; } roofBoxes.push([cx / n, h, cz / n, hash(bi)]); }
     // roof
     const contour = pts.map(([x, z]) => new THREE.Vector2(x, z));
@@ -574,9 +593,12 @@ export async function buildWorld(scene, url = 'assets/map.json', opts = {}) {
   const SHOPLIKE = new Set([...Object.keys(SIGN), 'vacant', 'clothes', 'shoes', 'jewelry', 'cosmetics', 'beauty', 'perfumery', 'clinic', 'gift', 'books', 'hardware', 'furniture', 'electronics', 'car_repair', 'variety_store', 'pastry', 'tobacco', 'travel_agency', 'laundry', 'pet', 'toys']);
   function placeSign(p, kind) {
     if (!p.wall) return null;
-    const w = p.wall, sw = Math.min(6, w.L * 0.8), s = new THREE.Mesh(signGeo, signMaterial(kind));
+    const w = p.wall, sw = Math.min(6, w.L * 0.8), sy = Math.min(3.6, w.h - 0.5), spec = Array.isArray(kind) ? kind : SIGN[kind] || SIGN.default;
+    if (p.signMesh) { world.remove(p.signMesh); const i = signRects.indexOf(p.signRect); if (i >= 0) signRects.splice(i, 1); p.signMesh = null; }
+    const rs = reserveSign(w.px, w.pz, w.nx, w.nz, sw, sy, sw / 4, spec[0], w.L); if (!rs) return null;
+    const s = new THREE.Mesh(signGeo, signMaterial(kind));
     s.scale.set(sw, sw / 4, 1);
-    s.position.set(w.px + w.nx * 0.45, Math.min(3.6, w.h - 0.5), w.pz + w.nz * 0.45);
+    s.position.set(rs.x + w.nx * 0.45, sy, rs.z + w.nz * 0.45); p.signMesh = s; p.signRect = rs;
     s.lookAt(s.position.x + w.nx, s.position.y, s.position.z + w.nz);
     world.add(s); return s;
   }
@@ -604,11 +626,7 @@ export async function buildWorld(scene, url = 'assets/map.json', opts = {}) {
       if (mallPolys.some(mp => Collider.inside(mp, p.x, p.z))) { p.signed = true; continue; }   // shops inside the mall: no signs on its outer walls
       // two POIs for the same shop (e.g. pharmacy + chemist) land on the same wall: one sign only; different shops side by side
       const kind = par || (p.k === 'casino' ? 'gambling' : p.k), txt = par ? par[0] : SIGN[kind][0];
-      const near = placedSigns.filter(o => Math.hypot(o.x - p.wall.px, o.z - p.wall.pz) < 7);
-      if (near.some(o => o.txt === txt)) { p.signed = true; continue; }
-      if (near.length) { const ux = -nz, uz = nx, dot = (near[0].x - p.wall.px) * ux + (near[0].z - p.wall.pz) * uz, sh = dot > 0 ? -1 : 1;
-        p.wall.px += ux * sh * 6.5; p.wall.pz += uz * sh * 6.5; }
-      p.signed = true; placeSign(p, kind); placedSigns.push({ x: p.wall.px, z: p.wall.pz, txt });
+      p.signed = true; placeSign(p, kind);
     }
   }
 

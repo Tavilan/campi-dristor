@@ -27,7 +27,7 @@ const SKY = {
     for (let i = 0; i < 260; i++) { g.fillStyle = `rgba(255,255,255,${Math.random() * .8})`; g.fillRect(Math.random() * w, Math.random() * h * 0.55, 1, 1); } }),
 };
 scene.fog = new THREE.Fog('#e9bfa0', 80, 430);
-const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 470);
+const camera = new THREE.PerspectiveCamera(60, 1, 0.25, 470);
 const hemi = new THREE.HemisphereLight('#ffe2c4', '#6a6070', 1.0); scene.add(hemi);
 const sun = new THREE.DirectionalLight('#ffb070', 2.8);
 const SUN_OFF = new THREE.Vector3(-110, 48, 60);           // low sun from the west = long shadows
@@ -273,6 +273,7 @@ function setMission(id) {
   const prev = state.mission; state.mission = id; updateHUD();
   if (prev !== id && MISSIONS[id]) { SFX.ding(); toast('Misiune nouă: ' + MISSIONS[id].title, 3500); }
   if (id === 'metrou') spawnDogs();
+  if (prev !== id) saveGame();
 }
 
 // ---------------- Slots (păcănele)
@@ -339,15 +340,58 @@ addEventListener('keydown', e => { if ((e.code === 'KeyF' || e.code === 'KeyQ') 
 let scooter = null, scootSound = null;
 function makeScooter() {
   const g = new THREE.Group(), dark = new THREE.MeshStandardMaterial({ color: '#1d1d1f', roughness: 0.5, metalness: 0.4 }), green = new THREE.MeshStandardMaterial({ color: '#29d17a', roughness: 0.4 });
-  const deck = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.05, 0.85), dark); deck.position.set(0, 0.11, 0.02); g.add(deck);
-  const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.205, 0.02, 0.6), green); stripe.position.set(0, 0.125, 0); g.add(stripe);
-  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.03, 1.05, 8), dark); stem.position.set(0, 0.6, 0.47); stem.rotation.x = -0.18; g.add(stem);
-  const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.52, 8), dark); bar.rotation.z = Math.PI / 2; bar.position.set(0, 1.1, 0.56); g.add(bar);
-  [-0.26, 0.26].forEach(x => { const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, 0.1, 8), green); grip.rotation.z = Math.PI / 2; grip.position.set(x, 1.1, 0.56); g.add(grip); });
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.05, 0.9), dark); deck.position.set(0, 0.11, 0.02); g.add(deck);
+  const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.245, 0.02, 0.62), green); stripe.position.set(0, 0.125, 0); g.add(stripe);
+  const front = new THREE.Group(); g.add(front); g.userData.front = front;
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.03, 1.05, 8), dark); stem.position.set(0, 0.6, 0.47); stem.rotation.x = -0.18; front.add(stem);
+  const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.52, 8), dark); bar.rotation.z = Math.PI / 2; bar.position.set(0, 1.1, 0.56); front.add(bar);
+  g.userData.grips = [-0.26, 0.26].map(x => { const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, 0.1, 8), green); grip.rotation.z = Math.PI / 2; grip.position.set(x, 1.1, 0.56); front.add(grip); return grip; });
   const wheels = [0.44, -0.4].map(z => { const w = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.05, 16), dark); w.rotation.z = Math.PI / 2; w.position.set(0, 0.1, z); g.add(w); return w; });
-  const light = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 6), new THREE.MeshBasicMaterial({ color: '#fff8d0' })); light.position.set(0, 1.0, 0.6); g.add(light);
+  const light = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 6), new THREE.MeshBasicMaterial({ color: '#fff8d0' })); light.position.set(0, 1.0, 0.6); front.add(light);
   g.traverse(o => { if (o.isMesh) o.castShadow = true; }); g.userData.wheels = wheels;
   return g;
+}
+// riding pose: analytic two-bone IK on the mocap skeleton - hands on the grips, one foot in front of the other on the deck
+const _ik = { a: new THREE.Vector3(), b: new THREE.Vector3(), c: new THREE.Vector3(), t: new THREE.Vector3(), p: new THREE.Vector3(), q: new THREE.Quaternion(), q2: new THREE.Quaternion(), v1: new THREE.Vector3(), v2: new THREE.Vector3() };
+function aimBone(bone, from, curTip, wantTip) {
+  const v1 = _ik.v1.subVectors(curTip, from).normalize(), v2 = _ik.v2.subVectors(wantTip, from).normalize();
+  const dq = _ik.q.setFromUnitVectors(v1, v2), pw = bone.parent.getWorldQuaternion(_ik.q2), bw = new THREE.Quaternion(); bone.getWorldQuaternion(bw);
+  bone.quaternion.copy(pw.invert().multiply(dq.multiply(bw))); bone.updateMatrixWorld(true);
+}
+function twoBoneIK(upper, lower, end, target, pole) {
+  const A = upper.getWorldPosition(new THREE.Vector3()), B = lower.getWorldPosition(new THREE.Vector3()), C = end.getWorldPosition(new THREE.Vector3());
+  const la = A.distanceTo(B), lb = B.distanceTo(C), dir = new THREE.Vector3().subVectors(target, A); let d = dir.length(); dir.normalize();
+  d = Math.min(Math.max(d, Math.abs(la - lb) + 1e-3), la + lb - 1e-3);
+  const cosA = (la * la + d * d - lb * lb) / (2 * la * d), sinA = Math.sqrt(Math.max(0, 1 - cosA * cosA));
+  const perp = pole.clone().sub(dir.clone().multiplyScalar(pole.dot(dir))).normalize();
+  const Bw = A.clone().add(dir.clone().multiplyScalar(cosA * la)).add(perp.multiplyScalar(sinA * la));
+  aimBone(upper, A, B, Bw);
+  const B2 = lower.getWorldPosition(new THREE.Vector3()), C2 = end.getWorldPosition(new THREE.Vector3());
+  aimBone(lower, B2, C2, A.clone().add(dir.clone().multiplyScalar(d)));
+}
+let rideBones = null;
+function ridePose() {
+  if (!scooter) return;
+  const g = (n) => campi.getObjectByName('mixamorig' + n);
+  if (!rideBones) rideBones = { la: g('LeftArm'), lf: g('LeftForeArm'), lh: g('LeftHand'), ra: g('RightArm'), rf: g('RightForeArm'), rh: g('RightHand'), lu: g('LeftUpLeg'), ll: g('LeftLeg'), lfo: g('LeftFoot'), ru: g('RightUpLeg'), rl: g('RightLeg'), rfo: g('RightFoot') };
+  const R = rideBones; if (!R.la || !R.lu) return;
+  campi.updateMatrixWorld(true);
+  const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(campi.quaternion), side = new THREE.Vector3(1, 0, 0).applyQuaternion(campi.quaternion), up = new THREE.Vector3(0, 1, 0);
+  // fit the handlebar to his reach once (stem slides forward/back)
+  if (!scooter.userData.fitted) { const sh = campi.worldToLocal(R.la.getWorldPosition(new THREE.Vector3())), hand = R.lh.getWorldPosition(new THREE.Vector3()), shw = R.la.getWorldPosition(new THREE.Vector3());
+    const reach = (shw.distanceTo(R.lf.getWorldPosition(new THREE.Vector3())) + R.lf.getWorldPosition(new THREE.Vector3()).distanceTo(hand)) / campi.scale.x, dy = sh.y - 1.1, dx = Math.abs(sh.x) - 0.26;
+    const dz = Math.sqrt(Math.max(0.04, (reach * 0.88) ** 2 - dy * dy - dx * dx)); scooter.userData.front.position.z = sh.z + dz - 0.56; scooter.userData.fitted = true; }
+  const gp = scooter.userData.grips.map(m => m.getWorldPosition(new THREE.Vector3()));
+  const lsh = R.la.getWorldPosition(new THREE.Vector3()), gl = gp[0].distanceTo(lsh) < gp[1].distanceTo(lsh) ? gp[0] : gp[1], gr = gl === gp[0] ? gp[1] : gp[0];
+  const lSide = Math.sign(side.dot(lsh.clone().sub(campi.position))) || 1;
+  twoBoneIK(R.la, R.lf, R.lh, gl, fwd.clone().multiplyScalar(-1).addScaledVector(side, lSide * 0.8).addScaledVector(up, -0.4).normalize());
+  twoBoneIK(R.ra, R.rf, R.rh, gr, fwd.clone().multiplyScalar(-1).addScaledVector(side, -lSide * 0.8).addScaledVector(up, -0.4).normalize());
+  // feet on the deck (ankle ~9 cm above the sole)
+  const deckY = campi.position.y + 0.135 * campi.scale.y + 0.09;
+  const fl = campi.position.clone().addScaledVector(side, lSide * 0.06).addScaledVector(fwd, 0.16); fl.y = deckY;
+  const fr = campi.position.clone().addScaledVector(side, -lSide * 0.06).addScaledVector(fwd, -0.2); fr.y = deckY;
+  twoBoneIK(R.lu, R.ll, R.lfo, fl, fwd.clone().addScaledVector(up, 0.2).normalize());
+  twoBoneIK(R.ru, R.rl, R.rfo, fr, fwd.clone().addScaledVector(up, 0.2).normalize());
 }
 function toggleScooter(on = !P.scooter) {
   if (dlg.active || state.finale) return;
@@ -694,6 +738,7 @@ function update(dt) {
     A.walk.timeScale = clamp(v / 1.9, 0.6, 1.6); A.run.timeScale = clamp(v / 6.5, 0.8, 1.4);
     campiBody.mixer.update(air ? dt * 0.2 : dt);
     campiBody.headMount.position.copy(campiBody.headBone.position); campiBody.headMount.quaternion.copy(campiBody.headBone.quaternion);
+    if (P.scooter) ridePose();
   }
   // face expression
   const talkingMe = dlg.talking === 'me' ? lipLevel() : 0;
@@ -833,7 +878,7 @@ async function finale() {
   state.finale = true; SFX.finale(); voice('stutter'); bigmsg('SIX SEVEN!'); state.happy = 6;
   setTimeout(() => campiSay('Am reușit, coaie!'), 1500);
   await new Promise(r => setTimeout(r, 3500));
-  state.finale = false; state.done = true; setMission('gata');
+  state.finale = false; state.done = true; setMission('gata'); saveGame();
   const secs = Math.round((performance.now() - state.t0) / 1000);
   $('endStats').innerHTML = `Ai dus-o pe Moo Deng la metrou în <b>${Math.floor(secs / 60)} min ${secs % 60} s</b>.<br>Bani rămași: <b>${state.money} lei</b> · 6-7 găsite: <b>${state.coins}/20</b><br>Mușcături de maidanez: <b>${state.bites}</b> · Loviri de mașină: <b>${state.hits}</b>` + (state.flags.pawned ? `<br>Ai amanetat ${state.flags.pawned}. Nu i-o zice lu\' mă-ta.` : '');
   $('end').classList.remove('hidden');
@@ -855,15 +900,57 @@ function loop() {
 
 // ---------------- Boot
 setup().then(() => {
-  $('loading').textContent = 'Gata. Dristorul te așteaptă.';
+  $('loading').textContent = 'Gata. Alege o salvare.'; renderSaves(true);
   camera.position.set(P.x + 20, 30, P.z + 20); camera.lookAt(P.x, 0, P.z);
   loop();
 }).catch(e => { console.error(e); $('loading').textContent = 'Eroare la încărcare: ' + e.message; });
-$('play').onclick = () => {
+// ---------------- Save games: 3 slots in this browser (localStorage), autosave every 10 s and on every mission change
+const SAVE_KEY = (i) => 'campi-dristor-save-' + i;
+let slot = 0, saveTimer = 0;
+function readSave(i) { try { const s = localStorage.getItem(SAVE_KEY(i)); return s ? JSON.parse(s) : null; } catch (e) { return null; } }
+function snapshot() {
+  const { money, inv, mission, flags, coins: nCoins, follower, bites, hits, spins, lastCoin, done } = state;
+  return { v: 1, t: Date.now(), play: Math.round((performance.now() - state.t0) / 1000), state: { money, inv, mission, flags, coins: nCoins, follower, bites, hits, spins, lastCoin, done },
+    P: { x: +P.x.toFixed(2), z: +P.z.toFixed(2), yaw: +P.yaw.toFixed(3) }, night: NIGHT, coins: coins.map(c => c.got ? 1 : 0) };
+}
+function saveGame() { if (!slot || !running || state.finale) return; try { localStorage.setItem(SAVE_KEY(slot), JSON.stringify(snapshot())); } catch (e) { } }
+function applySave(d) {
+  Object.assign(state, d.state); state.t0 = performance.now() - (d.play || 0) * 1000;
+  P.x = d.P.x; P.z = d.P.z; P.yaw = d.P.yaw; camYaw = P.yaw + Math.PI;
+  (d.coins || []).forEach((g, i) => { const c = coins[i]; if (c && g) { c.got = true; c.obj.visible = false; } });
+  if (state.follower) { const md = npcs.find(n => n.id === 'moodeng'); if (md) { md.x = P.x - Math.sin(P.yaw) * 2.6; md.z = P.z - Math.cos(P.yaw) * 2.6; } }
+  if (state.mission === 'metrou') spawnDogs();
+  if (d.night) setTimeOfDay(true);
+}
+function fmtSave(d) {
+  const m = MISSIONS[d.state.mission], date = new Date(d.t), mins = Math.floor((d.play || 0) / 60);
+  return `<b>${d.state.done ? 'Terminat ✔' : (m ? m.title : '')}</b><small>💰 ${d.state.money} lei · 6·7 ${d.state.coins}/20 · ${mins} min · ${date.toLocaleDateString('ro-RO', { day: 'numeric', month: 'short' })} ${date.toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' })}</small>`;
+}
+function renderSaves(ready) {
+  const box = $('saves'); box.innerHTML = '';
+  for (let i = 1; i <= 3; i++) {
+    const d = readSave(i), row = document.createElement('div'); row.className = 'saverow';
+    const b = document.createElement('button'); b.className = 'btn saveslot' + (d ? '' : ' empty'); b.disabled = !ready;
+    b.innerHTML = `<span class="slotn">${i}</span><span class="slott">${d ? fmtSave(d) : '<b>Joc nou</b><small>slot liber</small>'}</span>`;
+    b.onclick = () => startGame(i, d);
+    row.appendChild(b);
+    if (d) { const x = document.createElement('button'); x.className = 'btn grey savedel'; x.textContent = '✕'; x.title = 'Șterge salvarea';
+      x.onclick = () => { if (x.dataset.sure) { try { localStorage.removeItem(SAVE_KEY(i)); } catch (e) { } renderSaves(ready); } else { x.dataset.sure = 1; x.textContent = 'Sigur?'; setTimeout(() => { if (x.isConnected) { delete x.dataset.sure; x.textContent = '✕'; } }, 2500); } };
+      row.appendChild(x); }
+    box.appendChild(row);
+  }
+}
+renderSaves(false);
+function startGame(i, d) {
   initAudio(); unlockAudio();
+  slot = i;
   $('start').classList.add('hidden'); $('hud').classList.remove('hidden');
-  running = true; state.t0 = performance.now(); updateHUD();
-  voice('start');
-  setTimeout(() => phone('Mama', 'Câmpi, unde ești?? Treci pe la Tanti Geta, că te-a căutat. Stă la geam, ca de obicei. Și ia pâine!'), 1200);
-};
-window.__g = { setTimeOfDay: (n) => setTimeOfDay(n), camPos, camTarget, setCam(y, p, d) { camYaw = y; camPitch = p; if (d) camDist = d; lastLook = performance.now() + 1e6; }, state, P, npcs, LOC, setMission, talkTo, get W() { return W; }, get DET() { return DET; }, camera, scene, renderer, update, input };
+  running = true; state.t0 = performance.now();
+  if (d) { applySave(d); toast('Salvarea ' + i + ' încărcată'); }
+  updateHUD(); voice('start');
+  if (!d) setTimeout(() => phone('Mama', 'Câmpi, unde ești?? Treci pe la Tanti Geta, că te-a căutat. Stă la geam, ca de obicei. Și ia pâine!'), 1200);
+  saveGame(); clearInterval(saveTimer); saveTimer = setInterval(saveGame, 10000);
+}
+addEventListener('pagehide', saveGame); document.addEventListener('visibilitychange', () => { if (document.hidden) saveGame(); });
+$('play').onclick = () => startGame(1, null);   // (kept for the automated tests)
+window.__g = { setTimeOfDay: (n) => setTimeOfDay(n), camPos, camTarget, setCam(y, p, d) { camYaw = y; camPitch = p; if (d) camDist = d; lastLook = performance.now() + 1e6; }, state, P, npcs, LOC, setMission, talkTo, get W() { return W; }, get DET() { return DET; }, get campi() { return campi; }, get mooDeng() { return mooDeng; }, toggleScooter: (v) => toggleScooter(v), camera, scene, renderer, update, input };
