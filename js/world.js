@@ -372,6 +372,8 @@ export async function buildWorld(scene, url = 'assets/map.json', opts = {}) {
   const signCacheExtra = []; world.userData.signExtra = signCacheExtra;
   const BRAND = ['#d7263d', '#1b4f9c', '#f2a900', '#2e8b57', '#e6007e', '#ff6a00'];
   const LABEL = { supermarket: 'SUPERMARKET', doityourself: 'BRICOLAJ', furniture: 'MOBILĂ', sports: 'SPORT', pet: 'PET SHOP', clothes: 'FASHION', hardware: 'BRICOLAJ' };
+  // real shops (OSM POIs) get their own sign later; generic complex signs keep clear of them
+  const signPts = M.pois.filter(p => SIGN[p.k]).map(p => [p.x / 10, p.z / 10]);
   const COMPLEX_SIGNS = ['FARMACIE', 'NON-STOP', 'MĂCELĂRIE', 'COVRIGI', 'PARIURI', 'AMANET', 'FRIZERIE', 'LEGUME-FRUCTE', 'ALIMENTARA', 'CROITORIE', 'TELEFOANE', 'BĂUTURI', 'FLORĂRIE', 'SHAORMA'];
   function buildSpecial(type, b, bi, pts, h) {
     const n = pts.length, cc = colorArr('#ffffff'), dimc = (f) => [f, f, f];
@@ -390,7 +392,7 @@ export async function buildWorld(scene, url = 'assets/map.json', opts = {}) {
       } else if (type === 'complex') {
         strip('shop', x1, z1, x2, z2, 0, 3.8, per, L, dimc(1), dimc(0.75));
         strip('fins', x1, z1, x2, z2, 3.8, h, per, L, dimc(1), dimc(0.85));
-        if (L > 7) for (let s = 3; s + 5 < L; s += 11) { const t = (s + 2.5) / L; labelPlane(COMPLEX_SIGNS[(hash(bi * 3 + i * 11 + s) * COMPLEX_SIGNS.length) | 0], 4.6, 0.8, '#fff', BRAND[(hash(bi + s + i) * BRAND.length) | 0], x1 + (x2 - x1) * t, 3.3, z1 + (z2 - z1) * t, nx, nz, 0.35); }
+        if (L > 7) for (let s = 3; s + 5 < L; s += 11) { const t = (s + 2.5) / L; const sx = x1 + (x2 - x1) * t, sz = z1 + (z2 - z1) * t; if (signPts.some(([px, pz]) => Math.abs(px - sx) < 10 && Math.abs(pz - sz) < 10)) continue; labelPlane(COMPLEX_SIGNS[(hash(bi * 3 + i * 11 + s) * COMPLEX_SIGNS.length) | 0], 4.6, 0.8, '#fff', BRAND[(hash(bi + s + i) * BRAND.length) | 0], x1 + (x2 - x1) * t, 3.3, z1 + (z2 - z1) * t, nx, nz, 0.35); }
       } else if (type === 'civic') {
         strip('civic', x1, z1, x2, z2, 0, h, per, L, colorArr(/kindergarten|grădiniț/i.test((b.k || '') + (b.n || '')) ? '#fff0e0' : '#ffffff'), dimc(0.7));
       } else if (type === 'church') {
@@ -518,10 +520,11 @@ export async function buildWorld(scene, url = 'assets/map.json', opts = {}) {
     if (!p.wall) return null;
     const w = p.wall, sw = Math.min(6, w.L * 0.8), s = new THREE.Mesh(signGeo, signMaterial(kind));
     s.scale.set(sw, sw / 4, 1);
-    s.position.set(w.px + w.nx * 0.12, Math.min(3.6, w.h - 0.5), w.pz + w.nz * 0.12);
+    s.position.set(w.px + w.nx * 0.45, Math.min(3.6, w.h - 0.5), w.pz + w.nz * 0.45);
     s.lookAt(s.position.x + w.nx, s.position.y, s.position.z + w.nz);
     world.add(s); return s;
   }
+  const placedSigns = [];
   for (const p of pois) {
     if (!SHOPLIKE.has(p.k)) continue;
     let best = null;
@@ -539,7 +542,15 @@ export async function buildWorld(scene, url = 'assets/map.json', opts = {}) {
     const nx = best.ez / best.L, nz = -best.ex / best.L; // outward (right side of CCW edge)
     p.wall = { px: best.px, pz: best.pz, nx, nz, h: best.h, L: best.L };
     p.door = [best.px + nx * 1.8, best.pz + nz * 1.8];
-    if (SIGN[p.k]) { p.signed = true; placeSign(p, p.k === 'casino' ? 'gambling' : p.k); }
+    if (SIGN[p.k]) {
+      // two POIs for the same shop (e.g. pharmacy + chemist) land on the same wall: one sign only; different shops side by side
+      const kind = p.k === 'casino' ? 'gambling' : p.k, txt = SIGN[kind][0];
+      const near = placedSigns.filter(o => Math.hypot(o.x - p.wall.px, o.z - p.wall.pz) < 7);
+      if (near.some(o => o.txt === txt)) { p.signed = true; continue; }
+      if (near.length) { const ux = -nz, uz = nx, dot = (near[0].x - p.wall.px) * ux + (near[0].z - p.wall.pz) * uz, sh = dot > 0 ? -1 : 1;
+        p.wall.px += ux * sh * 6.5; p.wall.pz += uz * sh * 6.5; }
+      p.signed = true; placeSign(p, kind); placedSigns.push({ x: p.wall.px, z: p.wall.pz, txt });
+    }
   }
 
   // Trees in parks and along residential streets (instanced)

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { buildWorld, Collider, canvasTex, pick, rand, signMaterial } from './world.js';
 import { makeHuman, simpleHead, makeCampiHead, makeCampiBody, makeRigCharacter, animateHuman, makeMooDeng, animateHippo, makeDog, animateDog, makeCar } from './characters.js';
 import { MISSIONS, NPC_DEFS, PED_LINES, DOG_BITES, CAR_HITS } from './content.js';
+import { SPEAKERS, speakerKey } from './voices.js';
 import { lineId } from './slug.js';
 
 const $ = (id) => document.getElementById(id);
@@ -55,7 +56,7 @@ let campi, campiHead, campiBody, mooDeng = null, beacon, targetMarker;
 const LOC = {};
 
 // ---------------- Audio
-let actx = null, master = null, muted = false, ttsOn = true, roVoice = null, voiceBus = null, analyser = null, lipBuf = null, campiLines = {}, lip = 0;
+let actx = null, master = null, muted = false, ttsOn = true, roVoice = null, voiceBus = null, analyser = null, lipBuf = null, campiLines = {}, npcLines = {}, npcBus = null, npcSrc = null, npcTok = 0, lip = 0;
 const lineCache = {};
 const voices = {};
 function initAudio() {
@@ -64,7 +65,9 @@ function initAudio() {
   master = actx.createGain(); master.gain.value = 0.8; master.connect(actx.destination);
   voiceBus = actx.createGain(); analyser = actx.createAnalyser(); analyser.fftSize = 512; lipBuf = new Float32Array(512);
   voiceBus.connect(analyser); voiceBus.connect(master);
-  fetch('assets/voice/campi/manifest.json').then(r => r.ok ? r.json() : {}).then(m => { campiLines = m; }).catch(() => {});
+  npcBus = actx.createGain(); npcBus.gain.value = 1.25; npcBus.connect(master);
+  fetch('assets/voice/npc/manifest.json').then(r => r.ok ? r.json() : {}).then(m => { npcLines = m; preloadSpeaker('geta'); }).catch(() => {});
+  fetch('assets/voice/campi/manifest.json').then(r => r.ok ? r.json() : {}).then(m => { campiLines = m; for (const [id, f] of Object.entries(m)) preloadLine('assets/voice/campi/', id, f); }).catch(() => {});
   const man = { start: ['start.mp3'], sixseven: ['sixseven.mp3', 'sixseven2.mp3', 'sixseven3.mp3'], crash: ['crash.mp3', 'crash2.mp3'], laugh: ['laugh.mp3', 'full.mp3'], stutter: ['stutter.mp3'], zoomies: ['zoomies.mp3'] };
   for (const [k, fs] of Object.entries(man)) { voices[k] = []; fs.forEach(f => fetch('assets/voice/' + f).then(r => r.arrayBuffer()).then(b => actx.decodeAudioData(b)).then(buf => voices[k].push(buf)).catch(() => {})); }
   ambience();
@@ -77,8 +80,9 @@ function playBuf(buf, { rate = 1, vol = 1.2, offset = 0, dur, bus } = {}) {
 async function campiSay(text) {
   const id = lineId(text.replace(/\s*\([^)]*\)\s*$/, '')), f = campiLines[id];
   if (f && actx) {
-    try { if (!lineCache[id]) lineCache[id] = await fetch('assets/voice/campi/' + f).then(r => r.arrayBuffer()).then(b => actx.decodeAudioData(b));
-      playBuf(lineCache[id], { vol: 1.3, bus: voiceBus }); return lineCache[id].duration; } catch (e) {}
+    if (actx.state !== 'running') actx.resume();
+    const buf = await preloadLine('assets/voice/campi/', id, f);
+    if (buf) { playBuf(buf, { vol: 1.3, bus: voiceBus }); return buf.duration; }
   }
   babble(); return 0;
 }
@@ -160,17 +164,48 @@ function updateEnvAudio(dt) {
     else if (tram && Math.hypot(tram.obj.position.x - P.x, tram.obj.position.z - P.z) < 120) panned(() => { tone(1318, 0.25, 'sine', 0.3); tone(1318, 0.25, 'sine', 0.3, null, 0.35); }, undefined, 0.4);
   }
 }
-function pickVoice() { const vs = speechSynthesis?.getVoices?.() || []; roVoice = vs.find(v => /^ro/i.test(v.lang)) || null; }
+// best Romanian system voice: prefer the higher-quality (Enhanced / Premium / Google / neural) variants
+function pickVoice() {
+  const vs = (speechSynthesis?.getVoices?.() || []).filter(v => /^ro/i.test(v.lang));
+  const score = v => (/premium/i.test(v.name) ? 4 : 0) + (/enhanced|îmbunătățit|neural|natural|online/i.test(v.name) ? 3 : 0) + (/google|microsoft/i.test(v.name) ? 2 : 0) + (v.localService ? 0 : 1);
+  roVoice = vs.sort((a, b) => score(b) - score(a))[0] || null;
+}
 if ('speechSynthesis' in window) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
-function speak(text, who) {
-  if (!ttsOn || muted || !('speechSynthesis' in window) || !roVoice) return;
-  const u = new SpeechSynthesisUtterance(text.replace(/\*[^*]+\*/g, '')); u.voice = roVoice; u.lang = roVoice.lang;
-  const h = [...who].reduce((a, c) => a + c.charCodeAt(0), 0); u.pitch = 0.7 + (h % 7) / 10; u.rate = 1.08;
-  speechSynthesis.cancel(); speechSynthesis.speak(u);
+// Phones (iOS especially) only allow sound that is started from a tap: unlock WebAudio and speech on the first taps
+let speechUnlocked = false;
+function unlockAudio() {
+  if (actx) { if (actx.state !== 'running') actx.resume(); const b = actx.createBuffer(1, 1, 22050), s = actx.createBufferSource(); s.buffer = b; s.connect(actx.destination); s.start(0); }
+  if (!speechUnlocked && 'speechSynthesis' in window) { pickVoice(); const u = new SpeechSynthesisUtterance(' '); u.volume = 0; u.lang = 'ro-RO'; speechSynthesis.speak(u); speechUnlocked = true; }
+}
+['touchend', 'click', 'keydown'].forEach(ev => addEventListener(ev, () => { if (actx && actx.state !== 'running') actx.resume(); if (!speechUnlocked) unlockAudio(); }, { passive: true }));
+// fetch + decode voice lines ahead of time, so the first line of a dialogue isn't lost while it downloads
+function preloadLine(dir, id, f) { if (actx && f && !lineCache[id]) lineCache[id] = fetch(dir + f).then(r => r.arrayBuffer()).then(b => actx.decodeAudioData(b)).catch(() => null); return lineCache[id]; }
+function preloadSpeaker(key) { for (const [id, f] of Object.entries(npcLines)) if (id.startsWith(key + '_')) preloadLine('assets/voice/npc/', id, f); }
+function stopNpcVoice() { npcTok++; try { npcSrc?.stop(); } catch (e) {} npcSrc = null; try { speechSynthesis?.cancel(); } catch (e) {} }
+// NPC speaking: their ElevenLabs line if generated (assets/voice/npc), otherwise the phone's Romanian voice
+async function speak(text, who) {
+  stopNpcVoice();
+  if (!ttsOn || muted) return;
+  const key = speakerKey(who), id = key + '_' + lineId(text), f = npcLines[id], tok = npcTok;
+  if (f && actx) {
+    if (actx.state !== 'running') actx.resume();
+    const buf = await preloadLine('assets/voice/npc/', id, f);
+    if (buf) { if (tok === npcTok) npcSrc = playBuf(buf, { vol: 1, bus: npcBus }); return; }
+  }
+  if (!roVoice) pickVoice();
+  if (!('speechSynthesis' in window) || tok !== npcTok) return;
+  const sp = SPEAKERS[key] || {};
+  // split on sentences so the system voice breathes between them instead of reading one long run-on
+  const parts = text.replace(/\*[^*]+\*/g, '').replace(/\.\.\./g, ',').split(/(?<=[.!?])\s+/).filter(p => p.trim());
+  for (const p of parts) {
+    const u = new SpeechSynthesisUtterance(p); if (roVoice) u.voice = roVoice; u.lang = roVoice ? roVoice.lang : 'ro-RO';
+    u.pitch = (sp.pitch || 1) + (/!/.test(p) ? 0.05 : 0); u.rate = (sp.rate || 1) * (/\?$/.test(p) ? 0.97 : 1);
+    speechSynthesis.speak(u);
+  }
 }
 $('bNight').onclick = (e) => { e.stopPropagation(); setTimeOfDay(!NIGHT); };
-$('bMute').onclick = (e) => { e.stopPropagation(); muted = !muted; if (master) master.gain.value = muted ? 0 : 0.8; $('bMute').textContent = muted ? '🔇' : '🔊'; if (muted) speechSynthesis?.cancel(); };
-$('bTTS').onclick = (e) => { e.stopPropagation(); ttsOn = !ttsOn; $('bTTS').style.opacity = ttsOn ? 1 : 0.4; toast(ttsOn ? (roVoice ? 'Vocile NPC pornite' : 'Telefonul n-are voce în română instalată') : 'Vocile NPC oprite'); };
+$('bMute').onclick = (e) => { e.stopPropagation(); muted = !muted; if (master) master.gain.value = muted ? 0 : 0.8; $('bMute').textContent = muted ? '🔇' : '🔊'; if (muted) stopNpcVoice(); };
+$('bTTS').onclick = (e) => { e.stopPropagation(); ttsOn = !ttsOn; $('bTTS').style.opacity = ttsOn ? 1 : 0.4; toast(ttsOn ? (roVoice || Object.keys(npcLines).length ? 'Vocile NPC pornite' : 'Telefonul n-are voce în română instalată') : 'Vocile NPC oprite'); };
 
 // ---------------- UI helpers
 let toastT = 0;
@@ -199,7 +234,7 @@ function typeText(text) {
 async function say(who, text, me = false) {
   $('dialog').classList.remove('hidden'); $('dlgChoices').innerHTML = ''; $('dlgHint').style.display = 'block';
   $('dlgWho').textContent = who; $('dlgWho').className = me ? 'me' : '';
-  if (me) campiSay(text); else speak(text, who);
+  if (me) { stopNpcVoice(); campiSay(text); } else speak(text, who);
   dlg.talking = me ? 'me' : 'npc';
   await typeText(text);
   await new Promise(r => { dlg.resolve = r; });
@@ -208,7 +243,7 @@ async function say(who, text, me = false) {
 function choose(opts) {
   return new Promise(res => {
     $('dlgHint').style.display = 'none'; const box = $('dlgChoices'); box.innerHTML = '';
-    opts.forEach((o, i) => { const b = document.createElement('button'); b.textContent = o; b.onclick = async (e) => { e.stopPropagation(); box.innerHTML = ''; dlg.talking = 'me'; $('dlgWho').textContent = 'Câmpi'; $('dlgWho').className = 'me'; $('dlgText').textContent = o; const d = await campiSay(o); await new Promise(r => setTimeout(r, Math.max(700, d * 1000))); dlg.talking = null; res(i); }; box.appendChild(b); });
+    opts.forEach((o, i) => { const b = document.createElement('button'); b.textContent = o; b.onclick = async (e) => { e.stopPropagation(); box.innerHTML = ''; stopNpcVoice(); dlg.talking = 'me'; $('dlgWho').textContent = 'Câmpi'; $('dlgWho').className = 'me'; $('dlgText').textContent = o; const d = await campiSay(o); await new Promise(r => setTimeout(r, Math.max(700, d * 1000))); dlg.talking = null; res(i); }; box.appendChild(b); });
   });
 }
 $('dialog').addEventListener('click', () => { if ($('dlgChoices').children.length) return; if (!dlg.typingDone) { dlg.skip = true; return; } if (dlg.resolve) { const r = dlg.resolve; dlg.resolve = null; r(); } });
@@ -226,10 +261,11 @@ function ctxFor(npc) {
 async function talkTo(npc) {
   if (dlg.active) return;
   dlg.active = true; dlg.npc = npc; $('bAct').classList.add('hidden'); $('btns').style.visibility = 'hidden'; $('mission').style.visibility = 'hidden';
+  unlockAudio(); preloadSpeaker(speakerKey(npc.name));
   if (npc.obj && !npc.window) npc.yawTarget = Math.atan2(P.x - npc.x, P.z - npc.z);
   try { if (npc.def) await npc.def.talk(ctxFor(npc)); else await say(npc.name, pick(PED_LINES)); }
   catch (e) { console.error(e); }
-  $('dialog').classList.add('hidden'); dlg.active = false; dlg.npc = null; speechSynthesis?.cancel?.(); $('btns').style.visibility = ''; $('mission').style.visibility = '';
+  $('dialog').classList.add('hidden'); dlg.active = false; dlg.npc = null; stopNpcVoice(); $('btns').style.visibility = ''; $('mission').style.visibility = '';
 }
 function setMission(id) {
   const prev = state.mission; state.mission = id; updateHUD();
@@ -812,7 +848,7 @@ setup().then(() => {
   loop();
 }).catch(e => { console.error(e); $('loading').textContent = 'Eroare la încărcare: ' + e.message; });
 $('play').onclick = () => {
-  initAudio(); if (actx.state === 'suspended') actx.resume();
+  initAudio(); unlockAudio();
   $('start').classList.add('hidden'); $('hud').classList.remove('hidden');
   running = true; state.t0 = performance.now(); updateHUD();
   voice('start');

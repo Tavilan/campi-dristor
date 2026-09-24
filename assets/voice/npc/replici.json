@@ -1,0 +1,527 @@
+[
+ {
+  "id": "geta_campi-iar-vii-la-5-dimineata-ma-te-am-va-ud0",
+  "speaker": "geta",
+  "text": "Câmpi! Iar vii la 5 dimineața, mă? Te-am văzut cum te-ai împiedicat de tomberon. Mă-ta știe?"
+ },
+ {
+  "id": "geta_ce-frate-ma-tu-n-ai-frate-ma-crezi-proas-io6",
+  "speaker": "geta",
+  "text": "Ce frate, mă? Tu n-ai frate. Mă crezi proastă? Am 40 de ani de geam în Dristor, eu văd tot."
+ },
+ {
+  "id": "geta_ce-sa-fac-ma-supraveghez-daca-nu-stau-eu-jts",
+  "speaker": "geta",
+  "text": "Ce să fac, mă? Supraveghez. Dacă nu stau eu la geam, cine? Poliția? Hă-hă."
+ },
+ {
+  "id": "geta_uite-ce-e-ma-doare-capul-de-la-manelele-fii",
+  "speaker": "geta",
+  "text": "Uite ce e, mă doare capul de la manelele alea din Logan-ul de jos. Du-te și ia-mi un Algocalmin de la farmacie. Și nu-mi lua generic, că ăla nu merge."
+ },
+ {
+  "id": "geta_bani-ce-bani-ma-ti-am-dat-5-lei-in-2014-c6b",
+  "speaker": "geta",
+  "text": "Bani? Ce bani, mă? Ți-am dat 5 lei în 2014 când ai terminat a patra. Ți-i țin minte. Hai, fugi!"
+ },
+ {
+  "id": "geta_ahaa-bravo-ma-vezi-ca-poti-sa-fii-si-tu-ktg",
+  "speaker": "geta",
+  "text": "Ahaa, bravo, mă! Vezi că poți să fii și tu om? Uite, ia 10 lei. Nu-i bea pe toți."
+ },
+ {
+  "id": "geta_du-te-la-nelu-ca-ala-pune-si-cartofi-in-y8k",
+  "speaker": "geta",
+  "text": "Du-te la Nelu, că ăla pune și cartofi în ea. Da' spală-te pe mâini după, că nu știi ce-a pipăit."
+ },
+ {
+  "id": "geta_ma-ce-e-porcu-ala-negru-dupa-tine-sa-nu-fy7",
+  "speaker": "geta",
+  "text": "Mă, ce e porcu' ăla negru după tine?! Să nu-l bagi în bloc, că-l spun la administrator!"
+ },
+ {
+  "id": "geta_vedeta-si-tu-te-credeai-vedeta-in-clasa-vaf",
+  "speaker": "geta",
+  "text": "Vedetă... Și tu te credeai vedetă în clasa a opta. Hai, du-l de-aici."
+ },
+ {
+  "id": "geta_ce-stai-ma-ca-prostu-in-mijlocul-drumulu-nmc",
+  "speaker": "geta",
+  "text": "Ce stai, mă, ca prostu' în mijlocul drumului? Du-te la treabă!"
+ },
+ {
+  "id": "geta_iar-ai-slabit-nu-mananci-nimic-numai-pro-n56",
+  "speaker": "geta",
+  "text": "Iar ai slăbit. Nu mănânci nimic, numai prostii."
+ },
+ {
+  "id": "geta_vecina-de-la-3-iar-a-luat-credit-sa-nu-i-gze",
+  "speaker": "geta",
+  "text": "Vecina de la 3 iar a luat credit. Să nu-i zici că ți-am zis."
+ },
+ {
+  "id": "geta_pe-vremea-mea-baietii-de-varsta-ta-aveau-274",
+  "speaker": "geta",
+  "text": "Pe vremea mea, băieții de vârsta ta aveau copii și rate la bancă."
+ },
+ {
+  "id": "farmacista_buna-ziua-va-ascult-si-va-rog-fara-retet-nan",
+  "speaker": "farmacista",
+  "text": "Bună ziua. Vă ascult. Și vă rog, fără rețete scrise pe șervețel."
+ },
+ {
+  "id": "farmacista_tare-domnule-e-farmacie-nu-bar-va-dau-al-s3z",
+  "speaker": "farmacista",
+  "text": "Tare? Domnule, e farmacie, nu bar. Vă dau Algocalmin și un sfat: apă."
+ },
+ {
+  "id": "farmacista_daca-aveam-il-luam-eu-prima-ca-stau-toat-3ri",
+  "speaker": "farmacista",
+  "text": "Dacă aveam, îl luam eu prima, că stau toată ziua cu voi. Algocalmin vă dau."
+ },
+ {
+  "id": "farmacista_face-9-lei-card-sau-cash-ou3",
+  "speaker": "farmacista",
+  "text": "Face 9 lei. Card sau cash?"
+ },
+ {
+  "id": "farmacista_n-aveti-9-lei-doamne-luati-l-ca-mi-e-mil-mya",
+  "speaker": "farmacista",
+  "text": "N-aveți 9 lei? Doamne... Luați-l, că mi-e milă de bătrânica aia. Nu mai veniți pe aici."
+ },
+ {
+  "id": "farmacista_ma-supar-dar-le-iau-meg",
+  "speaker": "farmacista",
+  "text": "Mă supăr. Dar le iau."
+ },
+ {
+  "id": "farmacista_vitamina-c-avem-la-reducere-pentru-dumne-8xe",
+  "speaker": "farmacista",
+  "text": "Vitamina C avem la reducere. Pentru dumneavoastră, și ceva pentru ochi. Arătați obosit."
+ },
+ {
+  "id": "farmacista_nu-nu-avem-xanax-fara-reteta-nici-pentru-r96",
+  "speaker": "farmacista",
+  "text": "Nu, nu avem Xanax fără rețetă. Nici pentru prieteni."
+ },
+ {
+  "id": "farmacista_tensiunea-v-o-masor-gratuit-numai-sa-nu-sc2",
+  "speaker": "farmacista",
+  "text": "Tensiunea v-o măsor gratuit. Numai să nu vă speriați de rezultat."
+ },
+ {
+  "id": "nelu_ce-vrei-ba-frumosule-zi-repede-ca-am-40-rt5",
+  "speaker": "nelu",
+  "text": "Ce vrei, bă, frumosule? Zi repede că am 40 de comenzi pe aplicație și un livrator care a adormit pe trotinetă."
+ },
+ {
+  "id": "nelu_fara-ceapa-fara-usturoi-atunci-ce-vrei-b-hu1",
+  "speaker": "nelu",
+  "text": "Fără ceapă, fără usturoi... Atunci ce vrei, bă, o lipie goală? Du-te la patiserie. Glumesc, ți-o fac cu de toate."
+ },
+ {
+  "id": "nelu_vegan-cartofii-si-ceapa-restu-e-porc-fra-755",
+  "speaker": "nelu",
+  "text": "Vegan? Cartofii. Și ceapa. Restu' e porc, fratele meu, că suntem în Dristor, nu în Berlin."
+ },
+ {
+  "id": "nelu_mare-cu-de-toate-30-de-lei-da-banii-c2j",
+  "speaker": "nelu",
+  "text": "Mare cu de toate, 30 de lei. Dă banii."
+ },
+ {
+  "id": "nelu_pofta-buna-coaie-si-nu-mai-veni-beat-pe-jwb",
+  "speaker": "nelu",
+  "text": "Poftă bună, coaie. Și nu mai veni beat pe la mine, că data trecută ai dansat cu frigiderul de sucuri."
+ },
+ {
+  "id": "nelu_pe-datorie-futu-i-ba-eu-sunt-crucea-rosi-cwd",
+  "speaker": "nelu",
+  "text": "Pe datorie?! Futu-i, bă, eu sunt Crucea Roșie? Du-te fă-ți banii. Joacă la păcănele la colț, sau amanetează-ți ceasul lu' bunicu'. Ai 30, ai shaorma. N-ai, n-ai."
+ },
+ {
+  "id": "nelu_aaa-s-a-intors-milionaru-hai-da-banii-yov",
+  "speaker": "nelu",
+  "text": "Aaa, s-a întors milionaru'. Hai, dă banii."
+ },
+ {
+  "id": "nelu_na-cu-de-toate-cu-cartofi-cu-sos-de-ustu-osc",
+  "speaker": "nelu",
+  "text": "Na, cu de toate, cu cartofi, cu sos de usturoi dublu. Nu pupa pe nimeni azi."
+ },
+ {
+  "id": "nelu_tot-30-de-lei-costa-ba-nu-s-a-ieftinit-d-xw3",
+  "speaker": "nelu",
+  "text": "Tot 30 de lei costă, bă. Nu s-a ieftinit de când ai plecat."
+ },
+ {
+  "id": "nelu_ce-mai-e-ba-vrei-si-suc-e-cald-frigideru-3tw",
+  "speaker": "nelu",
+  "text": "Ce mai e, bă? Vrei și suc? E cald, frigideru' s-a stricat de la tine."
+ },
+ {
+  "id": "nelu_shaorma-de-aici-a-vindecat-mai-multe-mah-ed",
+  "speaker": "nelu",
+  "text": "Shaorma de aici a vindecat mai multe mahmureli decât farmacia de vizavi."
+ },
+ {
+  "id": "nelu_am-un-var-care-a-deschis-shaormerie-in-g-j06",
+  "speaker": "nelu",
+  "text": "Am un văr care a deschis shaormerie în Germania. Acu' e bogat. Eu am tot Dristoru'."
+ },
+ {
+  "id": "gigi_frate-frate-baga-si-tu-aparatu-e-cald-pe-zdc",
+  "speaker": "gigi",
+  "text": "Frate, frate, bagă și tu! Aparatu' e cald, pe cuvântu' meu. A mâncat 2000 de lei de la ăla cu BMW, trebuie să dea acu'."
+ },
+ {
+  "id": "gigi_eu-azi-maine-castig-simt-hai-baga-pfm",
+  "speaker": "gigi",
+  "text": "Eu? Azi? ... Mâine câștig. Simt. Hai, bagă!"
+ },
+ {
+  "id": "gigi_fricosu-bine-du-te-la-amanet-la-costel-s-ia2",
+  "speaker": "gigi",
+  "text": "Fricosu'. Bine, du-te la amanet la Costel, să-ți fure ăla banii mai elegant."
+ },
+ {
+  "id": "gigi_vezi-ba-ti-am-zis-da-mi-si-mie-5-lei-ca-268",
+  "speaker": "gigi",
+  "text": "VEZI, BĂ?! Ți-am zis! Dă-mi și mie 5 lei, că eu ți-am dat pontu'."
+ },
+ {
+  "id": "gigi_esti-frate-cu-mine-hai-ca-i-bag-inapoi-3jv",
+  "speaker": "gigi",
+  "text": "Ești frate cu mine. Hai că-i bag înapoi."
+ },
+ {
+  "id": "gigi_zgarcit-ca-tanti-geta-du-te-du-te-8iw",
+  "speaker": "gigi",
+  "text": "Zgârcit ca Tanti Geta. Du-te, du-te."
+ },
+ {
+  "id": "gigi_nu-i-nimic-frate-si-eu-am-pierdut-casa-a-rrw",
+  "speaker": "gigi",
+  "text": "Nu-i nimic, frate, și eu am pierdut casa așa. Du-te la amanet, la Costel."
+ },
+ {
+  "id": "gigi_ai-cumva-10-lei-ii-dau-inapoi-cand-da-ap-ptz",
+  "speaker": "gigi",
+  "text": "Ai cumva 10 lei? Îi dau înapoi când dă aparatu'."
+ },
+ {
+  "id": "gigi_stii-care-i-diferenta-dintre-mine-si-un-5ae",
+  "speaker": "gigi",
+  "text": "Știi care-i diferența dintre mine și un milionar? Un rând de trei de 7."
+ },
+ {
+  "id": "gigi_frate-ti-am-zis-de-afacerea-cu-adidasi-n-h0m",
+  "speaker": "gigi",
+  "text": "Frate, ți-am zis de afacerea cu adidași? Nu? Bine."
+ },
+ {
+  "id": "costel_buna-ziua-sefu-ce-mi-aduceti-aur-telefoa-i3m",
+  "speaker": "costel",
+  "text": "Bună ziua, șefu'. Ce-mi aduceți? Aur, telefoane, ceasuri, rinichi? Glumesc cu rinichii. Parțial."
+ },
+ {
+  "id": "costel_ceas-rusesc-pobeda-frumos-bunicu-l-a-fur-ogp",
+  "speaker": "costel",
+  "text": "Ceas rusesc, Pobeda. Frumos. Bunicu' l-a furat de la un rus sau invers?"
+ },
+ {
+  "id": "costel_telefon-cu-ecranul-spart-in-forma-de-pai-2pv",
+  "speaker": "costel",
+  "text": "Telefon cu ecranul spart în formă de păianjen. Clasic Dristor. Îți dau puțin, că n-are nici încărcător."
+ },
+ {
+  "id": "costel_aoleu-frate-tu-o-sa-te-caute-cu-toata-sc-19a",
+  "speaker": "costel",
+  "text": "Aoleu, frate-tu o să te caute cu toată scara. Eu nu te-am văzut. Îți dau bine."
+ },
+ {
+  "id": "costel_hot-e-ala-de-la-banca-ma-eu-sunt-antrepr-nsp",
+  "speaker": "costel",
+  "text": "Hoț e ăla de la bancă, mă. Eu sunt antreprenor. Tot ${off} îți dau, că mi-e milă."
+ },
+ {
+  "id": "costel_off-4w5",
+  "speaker": "costel",
+  "text": "${off}"
+ },
+ {
+  "id": "costel_poti-sa-l-rascumperi-in-30-de-zile-cu-do-9jo",
+  "speaker": "costel",
+  "text": "Poți să-l răscumperi în 30 de zile cu dobândă de 67%. Glumesc. 60."
+ },
+ {
+  "id": "costel_nu-mai-am-ce-sa-ti-cumpar-sefu-poate-dac-zv9",
+  "speaker": "costel",
+  "text": "Nu mai am ce să-ți cumpăr, șefu'. Poate dacă mai ai un frate cu PlayStation."
+ },
+ {
+  "id": "costel_aur-de-14-carate-frate-pentru-tine-18-yff",
+  "speaker": "costel",
+  "text": "Aur de 14 carate, frate. Pentru tine, 18."
+ },
+ {
+  "id": "costel_toata-lumea-vine-la-costel-pana-la-urma-zng",
+  "speaker": "costel",
+  "text": "Toată lumea vine la Costel până la urmă. Și ăia de la bancă."
+ },
+ {
+  "id": "taxi_unde-mergem-sefu-pana-la-titan-80-de-lei-bw0",
+  "speaker": "taxi",
+  "text": "Unde mergem, șefu'? Până la Titan 80 de lei, că e trafic. Cum adică e la un kilometru? Păi și benzina?"
+ },
+ {
+  "id": "taxi_aparatu-e-stricat-facem-la-negru-iti-fac-4kg",
+  "speaker": "taxi",
+  "text": "Aparatu' e stricat, facem la negru. Îți fac preț de prieten: dublu."
+ },
+ {
+  "id": "taxi_am-dus-o-pe-una-de-la-dristor-la-otopeni-qtr",
+  "speaker": "taxi",
+  "text": "Am dus-o pe una de la Dristor la Otopeni cu 400 de lei. Plângea de fericire. Sau de altceva."
+ },
+ {
+  "id": "vecin_e-duminica-si-ce-daca-ba-eu-imi-renovez-893",
+  "speaker": "vecin",
+  "text": "E duminică? Și ce dacă, bă? Eu îmi renovez baia de 3 ani. Anul ăsta termin. Poate."
+ },
+ {
+  "id": "vecin_am-dat-de-teava-lu-ala-de-la-4-acu-are-c-2qb",
+  "speaker": "vecin",
+  "text": "Am dat de țeava lu' ăla de la 4. Acu' are cascadă. Premium."
+ },
+ {
+  "id": "vecin_zi-i-lu-tanti-geta-ca-n-am-auzit-o-cand-dh",
+  "speaker": "vecin",
+  "text": "Zi-i lu' Tanti Geta că n-am auzit-o când a bătut în calorifer. Am căști."
+ },
+ {
+  "id": "florinel_ce-te-uiti-ba-vrei-o-dedicatie-pentru-ca-m1l",
+  "speaker": "florinel",
+  "text": "Ce te uiți, bă? Vrei o dedicație? Pentru Câmpi, cel mai tare din Dristor, să trăiești, frate, că ești sufletu' meu!"
+ },
+ {
+  "id": "florinel_masina-e-in-leasing-da-respectu-e-cash-u9f",
+  "speaker": "florinel",
+  "text": "Mașina e în leasing, da' respectu' e cash."
+ },
+ {
+  "id": "florinel_futu-i-am-parcat-pe-trecere-da-e-trecere-75e",
+  "speaker": "florinel",
+  "text": "Futu-i, am parcat pe trecere. Da' e trecerea mea, stau aici de mic."
+ },
+ {
+  "id": "mitica_pe-vremea-lui-ceausescu-blocurile-astea-7d7",
+  "speaker": "mitica",
+  "text": "Pe vremea lui Ceaușescu blocurile astea erau noi, bă. Acu' uită-te la ele. Ca tine după o noapte."
+ },
+ {
+  "id": "mitica_hai-la-o-tabla-pun-5-lei-nu-nu-joc-cu-ti-mli",
+  "speaker": "mitica",
+  "text": "Hai la o tablă. Pun 5 lei. Nu, nu joc cu tine, că ești cu telefonu' ăla, trișezi."
+ },
+ {
+  "id": "mitica_am-lucrat-40-de-ani-la-ior-mi-au-dat-pen-26",
+  "speaker": "mitica",
+  "text": "Am lucrat 40 de ani la IOR. Mi-au dat pensie cât o shaorma pe zi. Fără cartofi."
+ },
+ {
+  "id": "madalina_tigari-pe-datorie-nu-mai-dam-campi-ai-de-ca8",
+  "speaker": "madalina",
+  "text": "Țigări pe datorie nu mai dăm, Câmpi. Ai deja 67 de lei în caiet."
+ },
+ {
+  "id": "madalina_berea-rece-e-in-spate-da-nu-e-rece-ca-fr-i5",
+  "speaker": "madalina",
+  "text": "Berea rece e în spate, da' nu e rece, că frigideru' e decorativ."
+ },
+ {
+  "id": "madalina_iar-ai-venit-doar-sa-stai-la-aer-conditi-i7x",
+  "speaker": "madalina",
+  "text": "Iar ai venit doar să stai la aer condiționat? Ia măcar o gumă."
+ },
+ {
+  "id": "politist_stai-asa-animalu-asta-are-botnita-are-ca-y8v",
+  "speaker": "politist",
+  "text": "Stai așa! Animalu' ăsta are botniță? Are carnet de sănătate? ... Bine, mergi. Da' să nu facă pe trotuar, că te amendez pe tine."
+ },
+ {
+  "id": "politist_actele-la-control-glumesc-n-am-chef-de-h-wan",
+  "speaker": "politist",
+  "text": "Actele la control. ... Glumesc, n-am chef de hârtii. Circulă."
+ },
+ {
+  "id": "politist_ai-vazut-cumva-un-bmw-negru-cu-manele-nu-et0",
+  "speaker": "politist",
+  "text": "Ai văzut cumva un BMW negru cu manele? Nu? Nici eu. Nu vreau să-l văd."
+ },
+ {
+  "id": "politist_politia-locala-sector-3-suntem-aici-sa-v-438",
+  "speaker": "politist",
+  "text": "Poliția Locală, sector 3. Suntem aici să vă protejăm. De obicei de la 9 la 5."
+ },
+ {
+  "id": "ped_m_ai-un-foc-590",
+  "speaker": "ped_m",
+  "text": "Ai un foc?"
+ },
+ {
+  "id": "ped_f_ai-un-foc-590",
+  "speaker": "ped_f",
+  "text": "Ai un foc?"
+ },
+ {
+  "id": "ped_m_frate-ai-2-lei-de-o-paine-ma-rog-de-o-be-7an",
+  "speaker": "ped_m",
+  "text": "Frate, ai 2 lei de-o pâine? ... Mă rog, de-o bere."
+ },
+ {
+  "id": "ped_f_frate-ai-2-lei-de-o-paine-ma-rog-de-o-be-7an",
+  "speaker": "ped_f",
+  "text": "Frate, ai 2 lei de-o pâine? ... Mă rog, de-o bere."
+ },
+ {
+  "id": "ped_m_ba-tu-esti-ala-de-pe-tiktok-ala-cu-6-7-8y0",
+  "speaker": "ped_m",
+  "text": "Bă, tu ești ăla de pe TikTok? Ăla cu 6-7?"
+ },
+ {
+  "id": "ped_f_ba-tu-esti-ala-de-pe-tiktok-ala-cu-6-7-8y0",
+  "speaker": "ped_f",
+  "text": "Bă, tu ești ăla de pe TikTok? Ăla cu 6-7?"
+ },
+ {
+  "id": "ped_m_futu-i-ce-cald-e-nici-la-mamaia-nu-i-asa-c9l",
+  "speaker": "ped_m",
+  "text": "Futu-i, ce cald e. Nici la Mamaia nu-i așa."
+ },
+ {
+  "id": "ped_f_futu-i-ce-cald-e-nici-la-mamaia-nu-i-asa-c9l",
+  "speaker": "ped_f",
+  "text": "Futu-i, ce cald e. Nici la Mamaia nu-i așa."
+ },
+ {
+  "id": "ped_m_nu-ma-filma-coaie-chc",
+  "speaker": "ped_m",
+  "text": "Nu mă filma, coaie!"
+ },
+ {
+  "id": "ped_f_nu-ma-filma-coaie-chc",
+  "speaker": "ped_f",
+  "text": "Nu mă filma, coaie!"
+ },
+ {
+  "id": "ped_m_stii-unde-e-dristor-2-ca-eu-sunt-la-dris-aiu",
+  "speaker": "ped_m",
+  "text": "Știi unde e Dristor 2? Că eu sunt la Dristor 1 de 20 de minute."
+ },
+ {
+  "id": "ped_f_stii-unde-e-dristor-2-ca-eu-sunt-la-dris-aiu",
+  "speaker": "ped_f",
+  "text": "Știi unde e Dristor 2? Că eu sunt la Dristor 1 de 20 de minute."
+ },
+ {
+  "id": "ped_m_aoleu-ce-ochelari-esti-de-la-anaf-25e",
+  "speaker": "ped_m",
+  "text": "Aoleu, ce ochelari! Ești de la ANAF?"
+ },
+ {
+  "id": "ped_f_aoleu-ce-ochelari-esti-de-la-anaf-25e",
+  "speaker": "ped_f",
+  "text": "Aoleu, ce ochelari! Ești de la ANAF?"
+ },
+ {
+  "id": "ped_m_ma-scuzati-sunteti-din-bloc-ca-n-a-mai-v-at0",
+  "speaker": "ped_m",
+  "text": "Mă scuzați, sunteți din bloc? Că n-a mai venit apa caldă din martie."
+ },
+ {
+  "id": "ped_f_ma-scuzati-sunteti-din-bloc-ca-n-a-mai-v-at0",
+  "speaker": "ped_f",
+  "text": "Mă scuzați, sunteți din bloc? Că n-a mai venit apa caldă din martie."
+ },
+ {
+  "id": "ped_m_hai-ba-ca-intarzii-la-munca-iar-vhg",
+  "speaker": "ped_m",
+  "text": "Hai, bă, că întârzii la muncă. Iar."
+ },
+ {
+  "id": "ped_f_hai-ba-ca-intarzii-la-munca-iar-vhg",
+  "speaker": "ped_f",
+  "text": "Hai, bă, că întârzii la muncă. Iar."
+ },
+ {
+  "id": "ped_m_six-seven-ce-nu-stii-esti-batran-phn",
+  "speaker": "ped_m",
+  "text": "Six seven! ... Ce, nu știi? Ești bătrân."
+ },
+ {
+  "id": "ped_f_six-seven-ce-nu-stii-esti-batran-phn",
+  "speaker": "ped_f",
+  "text": "Six seven! ... Ce, nu știi? Ești bătrân."
+ },
+ {
+  "id": "ped_m_ce-faci-ba-campi-te-am-vazut-aseara-la-s-vdd",
+  "speaker": "ped_m",
+  "text": "Ce faci, bă, Câmpi? Te-am văzut aseară la shaorma. Ai dansat pe masă."
+ },
+ {
+  "id": "ped_f_ce-faci-ba-campi-te-am-vazut-aseara-la-s-vdd",
+  "speaker": "ped_f",
+  "text": "Ce faci, bă, Câmpi? Te-am văzut aseară la shaorma. Ai dansat pe masă."
+ },
+ {
+  "id": "ped_m_doamne-iar-au-sapat-pe-mihai-bravu-dj8",
+  "speaker": "ped_m",
+  "text": "Doamne, iar au săpat pe Mihai Bravu."
+ },
+ {
+  "id": "ped_f_doamne-iar-au-sapat-pe-mihai-bravu-dj8",
+  "speaker": "ped_f",
+  "text": "Doamne, iar au săpat pe Mihai Bravu."
+ },
+ {
+  "id": "ped_m_parcarea-asta-e-a-mea-am-pus-galeata-pe-467",
+  "speaker": "ped_m",
+  "text": "Parcarea asta e a mea, am pus găleată pe ea din 2009."
+ },
+ {
+  "id": "ped_f_parcarea-asta-e-a-mea-am-pus-galeata-pe-467",
+  "speaker": "ped_f",
+  "text": "Parcarea asta e a mea, am pus găleată pe ea din 2009."
+ },
+ {
+  "id": "ped_m_ai-auzit-se-face-metrou-pana-la-ploiesti-t27",
+  "speaker": "ped_m",
+  "text": "Ai auzit? Se face metrou până la Ploiești. Pe bune. Anu' ăsta."
+ },
+ {
+  "id": "ped_f_ai-auzit-se-face-metrou-pana-la-ploiesti-t27",
+  "speaker": "ped_f",
+  "text": "Ai auzit? Se face metrou până la Ploiești. Pe bune. Anu' ăsta."
+ },
+ {
+  "id": "ped_m_manca-ti-as-ce-frumos-esti-azi-2qu",
+  "speaker": "ped_m",
+  "text": "Mânca-ți-aș, ce frumos ești azi."
+ },
+ {
+  "id": "ped_f_manca-ti-as-ce-frumos-esti-azi-2qu",
+  "speaker": "ped_f",
+  "text": "Mânca-ți-aș, ce frumos ești azi."
+ },
+ {
+  "id": "ped_m_pleaca-ba-de-langa-mine-ca-mi-iei-semnal-gup",
+  "speaker": "ped_m",
+  "text": "Pleacă, bă, de lângă mine că-mi iei semnalu'."
+ },
+ {
+  "id": "ped_f_pleaca-ba-de-langa-mine-ca-mi-iei-semnal-gup",
+  "speaker": "ped_f",
+  "text": "Pleacă, bă, de lângă mine că-mi iei semnalu'."
+ }
+]
