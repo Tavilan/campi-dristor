@@ -315,12 +315,128 @@ export async function buildWorld(scene, url = 'assets/map.json', opts = {}) {
   const CH = 280, chunks = new Map();
   const chunkOf = (x, z) => { const k = Math.floor(x / CH) + ':' + Math.floor(z / CH); if (!chunks.has(k)) chunks.set(k, { buckets: facadeMats.map(() => ({ pos: [], uv: [], col: [] })), garage: { pos: [], uv: [], col: [] }, plain: { pos: [], uv: [], col: [] }, roof: { pos: [], col: [] }, ground: { pos: [], uv: [], col: [] }, bal: [] }); return chunks.get(k); };
   const WALLC = ['#ffffff', '#fff6e8', '#f2f2ff', '#fff0f0', '#f0fff4', '#fffbe0'];
-  const signs = []; // later
   const buildingsOut = [];
+  // ---------- Special buildings: mall, big-box stores, socialist commercial complexes, schools/hospitals, churches
+  const retailAreas = M.areas.filter(a => a.k === 'retail' || a.k === 'market').map(a => D(a.p));
+  const polyArea2 = (pts) => { let a = 0; for (let i = 0; i < pts.length; i++) { const [x1, z1] = pts[i], [x2, z2] = pts[(i + 1) % pts.length]; a += x1 * z2 - x2 * z1; } return Math.abs(a / 2); };
+  function classify(b, pts, cx, cz) {
+    const A = polyArea2(pts), k = b.k || '', sh = b.s || '', nm = b.n || '';
+    if (sh === 'mall' || (k === 'retail' && A > 12000)) return 'mall';
+    if (k === 'church' || /^Biserica/i.test(nm) || sh === 'place_of_worship') return 'church';
+    if (['school', 'kindergarten', 'hospital', 'university', 'college', 'civic', 'public', 'dormitory'].includes(k) || ['townhall', 'police', 'clinic', 'school', 'kindergarten'].includes(sh)) return 'civic';
+    if ((['retail', 'commercial', 'supermarket'].includes(k) || /supermarket|doityourself|furniture|sports|pet|clothes|hardware/.test(sh)) && A > 700 && b.h < 16) return 'bigbox';
+    if (/complex|piața|piata/i.test(nm) || sh === 'marketplace' || ((['retail', 'commercial'].includes(k) || retailAreas.some(r => Collider.inside(r, cx, cz))) && b.h < 12 && A > 120)) return 'complex';
+    return null;
+  }
+  const glassTex = canvasTex(256, 256, (g, w, h) => {
+    const gr = g.createLinearGradient(0, 0, w, h); gr.addColorStop(0, '#5f7f99'); gr.addColorStop(0.5, '#a9c6dd'); gr.addColorStop(1, '#4d6a84'); g.fillStyle = gr; g.fillRect(0, 0, w, h);
+    g.fillStyle = 'rgba(255,255,255,.12)'; g.beginPath(); g.moveTo(0, h * .7); g.lineTo(w * .6, 0); g.lineTo(w * .8, 0); g.lineTo(0, h); g.fill();
+    g.fillStyle = '#c9ced3'; for (let x = 0; x <= w; x += 64) g.fillRect(x - 2, 0, 4, h); for (let y = 0; y <= h; y += 64) g.fillRect(0, y - 2, w, 4);
+  });
+  const glassEmi = canvasTex(256, 256, (g, w, h) => { g.fillStyle = '#000'; g.fillRect(0, 0, w, h); for (let x = 0; x < w; x += 64) for (let y = 0; y < h; y += 64) if (Math.random() < .7) { g.fillStyle = pick(['#e8c890', '#d8b070', '#c8d0e0']); g.fillRect(x + 3, y + 3, 58, 58); } });
+  const cladTex = canvasTex(256, 256, (g, w, h) => { g.fillStyle = '#e9e8e4'; g.fillRect(0, 0, w, h); g.fillStyle = 'rgba(0,0,0,.12)'; for (let x = 0; x <= w; x += 64) g.fillRect(x - 1, 0, 2, h); for (let y = 0; y <= h; y += 32) g.fillRect(0, y - 1, w, 2);
+    for (let i = 0; i < 400; i++) { g.fillStyle = `rgba(0,0,0,${Math.random() * .03})`; g.fillRect(Math.random() * w, Math.random() * h, 4, 4); } });
+  const metalTex = canvasTex(128, 128, (g, w, h) => { g.fillStyle = '#c8c9c6'; g.fillRect(0, 0, w, h); for (let x = 0; x < w; x += 8) { g.fillStyle = 'rgba(0,0,0,.12)'; g.fillRect(x, 0, 2, h); g.fillStyle = 'rgba(255,255,255,.18)'; g.fillRect(x + 3, 0, 1, h); } });
+  const shopfrontTex = canvasTex(512, 128, (g, w, h) => {
+    g.fillStyle = '#8e8a82'; g.fillRect(0, 0, w, h);
+    for (let x = 0; x < w; x += 128) { g.fillStyle = '#2f3336'; g.fillRect(x + 4, 18, 120, 110); g.fillStyle = '#7ea3bb'; g.fillRect(x + 10, 24, 108, 104);
+      g.fillStyle = 'rgba(255,255,255,.25)'; g.fillRect(x + 20, 30, 18, 90); g.fillStyle = '#2f3336'; g.fillRect(x + 62, 24, 4, 104);
+      g.fillStyle = 'rgba(0,0,0,.35)'; g.fillRect(x + 12, 90, 104, 38); }
+  });
+  const shopfrontEmi = canvasTex(512, 128, (g, w, h) => { g.fillStyle = '#000'; g.fillRect(0, 0, w, h); for (let x = 0; x < w; x += 128) if (Math.random() < .8) { g.fillStyle = pick(['#fff0c0', '#e0f0ff', '#ffe0a0']); g.fillRect(x + 10, 24, 108, 104); } });
+  const finsTex = canvasTex(256, 64, (g, w, h) => { g.fillStyle = '#b9b2a4'; g.fillRect(0, 0, w, h); for (let x = 0; x < w; x += 16) { g.fillStyle = 'rgba(0,0,0,.2)'; g.fillRect(x, 0, 4, h); g.fillStyle = 'rgba(255,255,255,.15)'; g.fillRect(x + 5, 0, 2, h); }
+    g.fillStyle = 'rgba(70,50,30,.25)'; g.fillRect(0, h - 8, w, 8); });
+  const civicTex = canvasTex(256, 128, (g, w, h) => { g.fillStyle = '#e4d6b8'; g.fillRect(0, 0, w, h);
+    for (const y of [16, 80]) for (let x = 10; x < w; x += 62) { g.fillStyle = '#f4f0e6'; g.fillRect(x, y, 48, 38); g.fillStyle = '#5d7a93'; g.fillRect(x + 3, y + 3, 42, 32); g.fillStyle = '#f4f0e6'; g.fillRect(x + 23, y + 3, 2, 32); g.fillRect(x + 3, y + 17, 42, 2); } });
+  [glassTex, cladTex, metalTex, shopfrontTex, finsTex, civicTex, glassEmi, shopfrontEmi].forEach(t => { t.wrapS = t.wrapT = THREE.RepeatWrapping; });
+  const SP = { glass: { m: new THREE.MeshStandardMaterial({ map: glassTex, emissiveMap: glassEmi, emissive: '#ffffff', emissiveIntensity: 0, roughness: 0.12, metalness: 0.6, vertexColors: true }), tile: [16, 16] },
+    clad: { m: new THREE.MeshStandardMaterial({ map: cladTex, roughness: 0.5, metalness: 0.2, vertexColors: true }), tile: [12, 12] },
+    metal: { m: new THREE.MeshStandardMaterial({ map: metalTex, roughness: 0.55, metalness: 0.35, vertexColors: true }), tile: [4, 4] },
+    shop: { m: new THREE.MeshStandardMaterial({ map: shopfrontTex, emissiveMap: shopfrontEmi, emissive: '#ffffff', emissiveIntensity: 0, roughness: 0.3, vertexColors: true }), tile: [16, 4] },
+    fins: { m: new THREE.MeshStandardMaterial({ map: finsTex, roughness: 0.95, vertexColors: true }), tile: [8, 2] },
+    civic: { m: new THREE.MeshStandardMaterial({ map: civicTex, roughness: 0.95, vertexColors: true }), tile: [8, 7] },
+    band: { m: new THREE.MeshStandardMaterial({ roughness: 0.6, vertexColors: true }), tile: [1, 1] } };
+  const spB = {}; for (const k in SP) spB[k] = { pos: [], uv: [], col: [] };
+  world.userData.specialNight = [SP.glass.m, SP.shop.m];
+  // wall strip helper for special buildings: y0..y1 on edge (x1,z1)->(x2,z2), texture tiled in metres
+  const strip = (key, x1, z1, x2, z2, y0, y1, per, L, colTop, colBot, out = 0) => {
+    const t = SP[key].tile, B = spB[key], ex = (x2 - x1) / L, ez = (z2 - z1) / L, nx = ez * out, nz = -ex * out;
+    pushQuadAO(B.pos, B.uv, B.col, [x1 + nx, y0, z1 + nz], [x1 + nx, y1, z1 + nz], [x2 + nx, y1, z2 + nz], [x2 + nx, y0, z2 + nz],
+      [per / t[0], y0 / t[1]], [per / t[0], y1 / t[1]], [(per + L) / t[0], y1 / t[1]], [(per + L) / t[0], y0 / t[1]], colBot, colTop);
+  };
+  const labelPlane = (text, w, hgt, fg, bg, x, y, z, nx, nz, glow = 0.6) => {
+    const t = canvasTex(1024, Math.round(1024 * hgt / w), (g, W2, H2) => { if (bg) { g.fillStyle = bg; g.fillRect(0, 0, W2, H2); } g.fillStyle = fg; g.font = `900 ${Math.round(H2 * 0.72)}px Trebuchet MS, Arial, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, W2 / 2, H2 * 0.54, W2 - 30); });
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, hgt), new THREE.MeshStandardMaterial({ map: t, transparent: !bg, emissive: '#ffffff', emissiveMap: t, emissiveIntensity: glow, roughness: 0.4 }));
+    m.position.set(x + nx * 0.15, y, z + nz * 0.15); m.lookAt(m.position.x + nx, y, m.position.z + nz); world.add(m); signCacheExtra.push(m.material); return m;
+  };
+  const signCacheExtra = []; world.userData.signExtra = signCacheExtra;
+  const BRAND = ['#d7263d', '#1b4f9c', '#f2a900', '#2e8b57', '#e6007e', '#ff6a00'];
+  const LABEL = { supermarket: 'SUPERMARKET', doityourself: 'BRICOLAJ', furniture: 'MOBILĂ', sports: 'SPORT', pet: 'PET SHOP', clothes: 'FASHION', hardware: 'BRICOLAJ' };
+  const COMPLEX_SIGNS = ['FARMACIE', 'NON-STOP', 'MĂCELĂRIE', 'COVRIGI', 'PARIURI', 'AMANET', 'FRIZERIE', 'LEGUME-FRUCTE', 'ALIMENTARA', 'CROITORIE', 'TELEFOANE', 'BĂUTURI', 'FLORĂRIE', 'SHAORMA'];
+  function buildSpecial(type, b, bi, pts, h) {
+    const n = pts.length, cc = colorArr('#ffffff'), dimc = (f) => [f, f, f];
+    let longest = null, per = 0;
+    for (let i = 0; i < n; i++) { const [x1, z1] = pts[i], [x2, z2] = pts[(i + 1) % n]; const L = Math.hypot(x2 - x1, z2 - z1); if (L < 0.5) continue;
+      const nx = (z2 - z1) / L, nz = -(x2 - x1) / L;
+      if (!longest || L > longest.L) longest = { L, x1, z1, x2, z2, nx, nz, mx: (x1 + x2) / 2, mz: (z1 + z2) / 2 };
+      if (type === 'mall') {
+        const alt = hash(bi * 7 + i) < 0.5;
+        strip('glass', x1, z1, x2, z2, 0, Math.min(7, h), per, L, dimc(1), dimc(0.85));
+        if (h > 7) strip(alt ? 'glass' : 'clad', x1, z1, x2, z2, 7, h - 1.5, per, L, dimc(1), dimc(0.92));
+        strip('band', x1, z1, x2, z2, h - 1.5, h + 0.6, per, L, colorArr('#f4f4f4'), colorArr('#dcdcdc'), 0.25);
+      } else if (type === 'bigbox') {
+        strip('metal', x1, z1, x2, z2, 0, h - 1.4, per, L, dimc(1), dimc(0.7));
+        const bc = colorArr(BRAND[(hash(bi) * BRAND.length) | 0]); strip('band', x1, z1, x2, z2, h - 1.4, h + 0.3, per, L, bc, bc, 0.2);
+      } else if (type === 'complex') {
+        strip('shop', x1, z1, x2, z2, 0, 3.8, per, L, dimc(1), dimc(0.75));
+        strip('fins', x1, z1, x2, z2, 3.8, h, per, L, dimc(1), dimc(0.85));
+        if (L > 7) for (let s = 3; s + 5 < L; s += 11) { const t = (s + 2.5) / L; labelPlane(COMPLEX_SIGNS[(hash(bi * 3 + i * 11 + s) * COMPLEX_SIGNS.length) | 0], 4.6, 0.8, '#fff', BRAND[(hash(bi + s + i) * BRAND.length) | 0], x1 + (x2 - x1) * t, 3.3, z1 + (z2 - z1) * t, nx, nz, 0.35); }
+      } else if (type === 'civic') {
+        strip('civic', x1, z1, x2, z2, 0, h, per, L, colorArr(/kindergarten|grădiniț/i.test((b.k || '') + (b.n || '')) ? '#fff0e0' : '#ffffff'), dimc(0.7));
+      } else if (type === 'church') {
+        strip('civic', x1, z1, x2, z2, 0, h, per, L, colorArr('#fff8f0'), dimc(0.75));
+      }
+      per += L;
+    }
+    if (!longest) return;
+    const { L, nx, nz, mx, mz } = longest;
+    if (type === 'mall') {
+      labelPlane('MALL', Math.min(26, L * 0.4), 5, '#ffffff', null, mx, h - 3.8, mz, nx, nz, 1.2);
+      const can = new THREE.Mesh(new THREE.BoxGeometry(16, 0.4, 5), new THREE.MeshStandardMaterial({ color: '#dfe6ea', metalness: .5, roughness: .2 }));
+      can.position.set(mx + nx * 2.5, 5.2, mz + nz * 2.5); can.rotation.y = Math.atan2(nx, nz); can.castShadow = true; world.add(can);
+      const ent = new THREE.Mesh(new THREE.PlaneGeometry(12, 4.5), new THREE.MeshStandardMaterial({ color: '#223', metalness: .8, roughness: .1, emissive: '#fff2cc', emissiveIntensity: 0.15 }));
+      ent.position.set(mx + nx * 0.2, 2.25, mz + nz * 0.2); ent.lookAt(ent.position.x + nx, 2.25, ent.position.z + nz); world.add(ent); signCacheExtra.push(ent.material);
+      const ex = -nz, ez = nx;   // along the facade
+      for (let k = -2; k <= 2; k++) { const px = mx + nx * 9 + ex * k * 4, pz = mz + nz * 9 + ez * k * 4;
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(.06, .06, 9, 6), new THREE.MeshStandardMaterial({ color: '#ccc', metalness: .7 })); pole.position.set(px, 4.5, pz); world.add(pole);
+        const fl = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 3), new THREE.MeshStandardMaterial({ color: BRAND[(k + 5) % BRAND.length], side: THREE.DoubleSide })); fl.position.set(px + ex * 0.6, 7.2, pz + ez * 0.6); fl.lookAt(fl.position.x + nx, 7.2, fl.position.z + nz); world.add(fl); }
+      for (let k = 0; k < 10; k++) { const [x, z] = pts[(k * 7) % n]; let cx = 0, cz = 0; for (const p of pts) { cx += p[0]; cz += p[1]; } cx /= n; cz /= n;
+        const hv = new THREE.Mesh(new THREE.BoxGeometry(4, 2, 3), new THREE.MeshStandardMaterial({ color: '#9aa0a3' })); hv.position.set(cx + (x - cx) * 0.4, h + 1, cz + (z - cz) * 0.4); hv.castShadow = true; world.add(hv); }
+    } else if (type === 'bigbox') {
+      const lab = LABEL[(b.s || '').split(';')[0]] || 'HIPERMARKET';
+      labelPlane(lab, Math.min(18, L * 0.5), 2.2, '#ffffff', BRAND[(hash(bi) * BRAND.length) | 0], mx, h - 0.6, mz, nx, nz, 0.8);
+      const gl = new THREE.Mesh(new THREE.PlaneGeometry(Math.min(12, L * 0.35), 3.6), new THREE.MeshStandardMaterial({ map: glassTex, emissiveMap: glassEmi, emissive: '#fff', emissiveIntensity: 0.1, metalness: .6, roughness: .1 }));
+      gl.position.set(mx + nx * 0.12, 1.8, mz + nz * 0.12); gl.lookAt(gl.position.x + nx, 1.8, gl.position.z + nz); world.add(gl); signCacheExtra.push(gl.material);
+      const can = new THREE.Mesh(new THREE.BoxGeometry(Math.min(14, L * 0.4), 0.3, 2.5), new THREE.MeshStandardMaterial({ color: BRAND[(hash(bi) * BRAND.length) | 0] })); can.position.set(mx + nx * 1.25, 3.9, mz + nz * 1.25); can.rotation.y = Math.atan2(nx, nz); world.add(can);
+    } else if (type === 'civic') {
+      const nm = b.n || ''; const t = /Școal|Scoal|school/i.test(nm + b.k) ? 'ȘCOALA' : /Grădin|kinder/i.test(nm + b.k) ? 'GRĂDINIȚA' : /Poli/i.test(nm) ? 'POLIȚIA LOCALĂ' : /Primări/i.test(nm) ? 'PRIMĂRIA SECTOR 3' : /hospital|Centrul Medical|Pavilion|Institut/i.test(nm + b.k) ? 'SPITAL' : null;
+      if (t) labelPlane(t, Math.min(14, L * 0.6), 1.3, '#1b2a44', '#f4f0e6', mx, Math.min(h - 0.8, 4.5), mz, nx, nz, 0.3);
+      if (t === 'SPITAL') labelPlane('+', 2, 2, '#e02020', '#ffffff', mx + (-nz) * (L * 0.35), h - 1.5, mz + nx * (L * 0.35), nx, nz, 0.8);
+    } else if (type === 'church') {
+      let cx = 0, cz = 0; for (const p of pts) { cx += p[0]; cz += p[1]; } cx /= n; cz /= n;
+      const gold = new THREE.MeshStandardMaterial({ color: '#d9a93a', metalness: 1, roughness: .25 });
+      const drum = new THREE.Mesh(new THREE.CylinderGeometry(3, 3, 3.5, 16), new THREE.MeshStandardMaterial({ color: '#fff8f0' })); drum.position.set(cx, h + 1.75, cz); world.add(drum);
+      const dome = new THREE.Mesh(new THREE.SphereGeometry(3.2, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), gold); dome.position.set(cx, h + 3.5, cz); world.add(dome);
+      const cr1 = new THREE.Mesh(new THREE.BoxGeometry(0.2, 2.4, 0.2), gold); cr1.position.set(cx, h + 7.9, cz); world.add(cr1);
+      const cr2 = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.18, 0.2), gold); cr2.position.set(cx, h + 8.4, cz); world.add(cr2);
+      [drum, dome].forEach(m => m.castShadow = true);
+    }
+  }
   M.buildings.forEach((b, bi) => {
     const pts = D(b.p); const h = b.h; const n = pts.length;
     let cx0 = 0, cz0 = 0; for (const [x, z] of pts) { cx0 += x; cz0 += z; } const ch = chunkOf(cx0 / n, cz0 / n);
     const { buckets, garage, plain, roof, ground } = ch;
+    const stype = classify(b, pts, cx0 / n, cz0 / n);
     const isGarage = b.k === 'garage' || b.k === 'garages' || (h < 3.6 && b.l <= 1);
     const special = ['church', 'school', 'retail', 'commercial', 'kindergarten', 'industrial', 'warehouse', 'hospital', 'office', 'supermarket'].includes(b.k);
     const tgt = isGarage ? garage : special ? plain : buckets[bi % 4];
@@ -329,7 +445,8 @@ export async function buildWorld(scene, url = 'assets/map.json', opts = {}) {
     const block = !isGarage && !special && h > 8;
     const GH = block ? 3.2 : 0;                    // ground floor band height
     let per = hash(bi) * 64;
-    for (let i = 0; i < n; i++) {
+    if (stype) buildSpecial(stype, b, bi, pts, h);
+    for (let i = 0; i < n && !stype; i++) {
       const [x1, z1] = pts[i], [x2, z2] = pts[(i + 1) % n]; const L = Math.hypot(x2 - x1, z2 - z1);
       // footprint is CCW in (x,z) with z south => outward normal is to the right; push quad wound for outward facing
       const u1 = per / (isGarage ? 8 : 6.4 * 8), u2 = (per + L) / (isGarage ? 8 : 6.4 * 8), v2 = isGarage ? 1 : (h - GH) / (2.9 * 8);
@@ -358,8 +475,9 @@ export async function buildWorld(scene, url = 'assets/map.json', opts = {}) {
     const rc = colorArr(isGarage ? '#5a5652' : '#77726c', 0.06);
     for (const t of tris) for (const i of [t[0], t[2], t[1]]) { roof.pos.push(contour[i].x, h, contour[i].y); roof.col.push(...rc); }
     collider.add(pts, { h, walkable: isGarage, building: bi });
-    buildingsOut.push({ pts, h, kind: b.k, name: b.n, shop: b.s, garage: isGarage });
+    buildingsOut.push({ pts, h, kind: b.k, name: b.n, shop: b.s, garage: isGarage, special: stype });
   });
+  for (const k in spB) if (spB[k].pos.length) { const m = new THREE.Mesh(geo(spB[k].pos, spB[k].uv, spB[k].col), SP[k].m); m.castShadow = true; m.receiveShadow = true; world.add(m); }
   const addMesh = (g, mat, shadow = true) => { if (!g.attributes.position.count) return; const m = new THREE.Mesh(g, mat); m.castShadow = shadow; m.receiveShadow = true; world.add(m); return m; };
   // check winding once: if normals point inward, flip all wall buckets
   const garageMat = new THREE.MeshStandardMaterial({ map: garageTex, vertexColors: true, roughness: 1 });
@@ -483,7 +601,16 @@ export async function buildWorld(scene, url = 'assets/map.json', opts = {}) {
           const x = x1 + ux * s + nx * off * side, z = z1 + uz * s + nz * off * side; if (collider.near(x, z).some(p => p.data?.building !== undefined && Collider.inside(p.pts, x, z))) continue;
           carSpots.push([x, z, Math.atan2(ux, uz)]); } }
     }
-    const N = Math.min(carSpots.length, 1500);
+    // parking lots (mall, supermarkets, blocks): rows of cars aligned with the lot's longest edge
+    for (const ar of M.areas) if (ar.k === 'parking') { const pts = D(ar.p); if (pts.length < 3) continue;
+      let lg = null; for (let i = 0; i < pts.length; i++) { const [x1, z1] = pts[i], [x2, z2] = pts[(i + 1) % pts.length]; const L = Math.hypot(x2 - x1, z2 - z1); if (!lg || L > lg.L) lg = { L, ux: (x2 - x1) / L, uz: (z2 - z1) / L }; }
+      let x0 = 1e9, z0 = 1e9, x1 = -1e9, z1 = -1e9; for (const [x, z] of pts) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
+      const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, R2 = Math.hypot(x1 - x0, z1 - z0) / 2, vx = -lg.uz, vz = lg.ux, a = Math.atan2(vx, vz);
+      for (let u = -R2; u < R2; u += 2.7) for (let w = -R2; w < R2; w += 6.2) { if (Math.random() > 0.62) continue;
+        const x = cx + lg.ux * u + vx * w, z = cz + lg.uz * u + vz * w;
+        if (!Collider.inside(pts, x, z) || collider.near(x, z).some(p => p.data?.building !== undefined && Collider.inside(p.pts, x, z))) continue;
+        carSpots.push([x, z, a + (Math.floor(w / 6.2) % 2 ? Math.PI : 0)]); } }
+    const N = Math.min(carSpots.length, 2600);
     const cars = new THREE.InstancedMesh(car, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .35, metalness: .25 }), N);
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(); const COLS = ['#f4f4f4', '#d7263d', '#1b4f9c', '#2e8b57', '#c0c0c0', '#8a8d91', '#f2a900', '#222', '#5b2c1d'];
     for (let i = 0; i < N; i++) { const [x, z, a] = carSpots[i]; m4.compose(new THREE.Vector3(x, 0, z), q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), a), new THREE.Vector3(1, 1, 1));
@@ -562,6 +689,8 @@ export async function buildWorld(scene, url = 'assets/map.json', opts = {}) {
     for (const m of world.userData.facadeMats || []) m.emissiveIntensity = on ? 1.0 : 0;
     if (world.userData.lampMat) world.userData.lampMat.emissiveIntensity = on ? 3 : 0;
     for (const m of Object.values(signCache)) m.emissiveIntensity = on ? 1.1 : 0.35;
+    for (const m of world.userData.specialNight || []) m.emissiveIntensity = on ? 0.55 : 0;
+    for (const m of world.userData.signExtra || []) { if (m.userData.day === undefined) m.userData.day = m.emissiveIntensity; m.emissiveIntensity = on ? Math.max(1, m.userData.day * 2) : m.userData.day; }
   }
 
   return { M, world, collider, pois, placeSign, lamps, tramPath, setNight, buildings: buildingsOut, roads: M.roads.map(r => ({ ...r, pts: D(r.p) })), areas: M.areas.map(a => ({ ...a, pts: D(a.p) })), radius: R };
