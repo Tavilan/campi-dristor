@@ -201,27 +201,57 @@ def infer(b):
     for lv, w in ws:
         acc += w
         if acc >= tot / 2: return lv
+# context rings: outer boundary of parks / green / schools (holes ignored on purpose: OSM often cuts the
+# restaurant terraces out of the park polygon, and those must NOT become tower blocks)
+def pip(x, z, p):
+    c = False; n = len(p)
+    for i in range(n):
+        x1, z1 = p[i]; x2, z2 = p[(i + 1) % n]
+        if (z1 > z) != (z2 > z) and x < (x2 - x1) * (z - z1) / (z2 - z1) + x1: c = not c
+    return c
+CTX = []
+for a in areas:
+    if a['k'] in ('park', 'wood', 'water', 'pier', 'pitch', 'school', 'dog', 'play') or (a['k'] == 'grass' and abs(area(a['p'])) > 2e6):
+        p = [(x / 10, z / 10) for x, z in a['p']]
+        xs = [x for x, _ in p]; zs = [z for _, z in p]
+        CTX.append((a['k'], (min(xs), max(xs), min(zs), max(zs)), p))
+def context(b):
+    cx, cz = b['c']
+    for k, (x0, x1, z0, z1), p in CTX:
+        if x0 <= cx <= x1 and z0 <= cz <= z1 and pip(cx, cz, p): return k
+    return None
+def nearest_tagged(b):
+    return min((math.dist(b['c'], o['c']) for o in neighbours(b) if o is not b), default=1e9)
 inferred = Counter()
 buildings = []
 for b in raw_b:
     t, kind, a, levels, height = b['t'], b['kind'], b['A'], b['levels'], b['height']
     src_tag = 'osm'
+    ctx = context(b) if kind not in ('church',) else None
+    if levels is None and height is None and ctx:
+        # buildings inside parks / schools: pavilions, terraces, gyms, not blocks
+        src_tag = 'ctx'
+        if ctx == 'school': levels = 2 if a < 400 else 3
+        elif kind in ('retail', 'kiosk', 'service', 'roof', 'shed', 'hut') or a < 200: levels = 1
+        else: levels = 1 + (a > 700)
     if levels is None and height is None:
         if kind in ('garage', 'garages', 'shed', 'kiosk', 'roof', 'hut', 'container'): levels = 1
         elif kind in ('church',): levels = 3
         elif kind in ('house', 'detached', 'semidetached_house'): levels = 1 + int(rnd(b['id']) * 2)
         elif kind in RESID and a > 120:
-            levels = infer(b); src_tag = 'inf'
+            levels = infer(b) if nearest_tagged(b) < 160 else None; src_tag = 'inf'
             if levels is None:
                 src_tag = 'guess'
                 levels = (5 if rnd(b['id']) < 0.4 else 9 if rnd(b['id'] + 1) < 0.5 else 11) if a > 500 else 2 + int(rnd(b['id']) * 3)
         elif a > 150: levels = 2 + int(rnd(b['id']) * 2)
         else: levels = 1 + int(rnd(b['id']) * 2)
-        inferred[src_tag] += 1
+    if levels is None and height is None: pass
+    if src_tag != 'osm': inferred[src_tag] += 1
     if height is None: height = height_of(levels, kind)
     if levels is None: levels = max(1, round((height - 0.6) / 2.8))
     o = {'p': qp(b['pts']), 'h': round(height, 1), 'l': int(levels)}
     if kind not in RESID: o['k'] = kind
+    if ctx in ('park', 'wood', 'water', 'pier', 'pitch', 'dog', 'play') and not b['levels'] and (height or 0) < 9: o['x'] = 'pav'
     if t.get('name'): o['n'] = t['name']
     if t.get('shop') or t.get('amenity'): o['s'] = t.get('shop') or t.get('amenity')
     if t.get('brand'): o['b'] = t['brand']
@@ -229,8 +259,42 @@ for b in raw_b:
     if t.get('building:colour'): o['c'] = t['building:colour']
     buildings.append(o)
 
+# ---- extra OSM nodes (fetched separately, compact text in tools/osm_extra): real trees with genus class + height,
+# pedestrian crossings, traffic signals, building entrances (scara letters)
+import os, re
+EX = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'osm_extra')
+trees, crossings, signals, entrances = [], [], [], []
+for fn in ('trees1.txt', 'trees2.txt'):
+    fp = os.path.join(EX, fn)
+    if not os.path.exists(fp): continue
+    for tok in open(fp).read().split():
+        m = re.match(r'(-?\d+),(-?\d+)([a-z])(\d*)$', tok)
+        if m: trees.append([int(m[1]), int(m[2]), m[3], int(m[4] or 0)])
+fp = os.path.join(EX, 'nodes.txt')
+if os.path.exists(fp):
+    for line in open(fp):
+        kind, _, rest = line.strip().partition(' ')
+        for tok in rest.split():
+            m = re.match(r'(-?\d+),(-?\d+)(.*)$', tok)
+            if not m: continue
+            x, z, tail = int(m[1]), int(m[2]), m[3]
+            if kind == 'CROSS': crossings.append([x, z, tail or 'z'])
+            elif kind == 'SIG': signals.append([x, z])
+            elif kind == 'ENT':
+                k, _, ref = tail.partition(':'); ref = re.sub(r'^Sc\.?', '', ref)
+                entrances.append([x, z, k or 'y', ref])
+pitches = []
+fp = os.path.join(EX, 'pitches.txt')
+if os.path.exists(fp):
+    for tok in open(fp).read().split():
+        f = tok[1:].split(',')
+        if tok[0] == 'P' and len(f) >= 5: pitches.append([int(f[0]), int(f[1]), float(f[2]), int(f[3]), int(f[4]), f[5] if len(f) > 5 else ''])
+seen = set(); trees = [t for t in trees if not ((t[0], t[1]) in seen or seen.add((t[0], t[1])))]
+print('extra: trees', len(trees), 'crossings', len(crossings), 'signals', len(signals), 'entrances', len(entrances))
+
 out = {'v': 2, 'center': [LAT0, LON0], 'radius': RADIUS, 'buildings': buildings, 'roads': roads, 'areas': areas, 'pois': pois,
-       'rails': rails, 'fences': fences, 'treerows': treerows, 'props': props}
+       'rails': rails, 'fences': fences, 'treerows': treerows, 'props': props,
+       'trees': trees, 'cross': crossings, 'signals': signals, 'entrances': entrances, 'pitches': pitches}
 json.dump(out, open(dst, 'w'), separators=(',', ':'), ensure_ascii=False)
 print(f'center {LAT0:.5f},{LON0:.5f}  buildings {len(buildings)}  roads {len(roads)}  areas {len(areas)}  pois {len(pois)}  rails {len(rails)}  fences {len(fences)}  treerows {len(treerows)}  props {len(props)}')
 print('levels source', dict(inferred), ' tagged', sum(1 for b in raw_b if b['levels']))

@@ -39,3 +39,6 @@ MP3-urile apar în `assets/voice/campi/`, iar jocul le folosește automat, cu mi
 - **Față:** reconstruită cu 3DDFA-V2 și Basel Face Model 2009, din 5 fotografii, plus planșa de referință generată cu AI pentru zonele pe care pozele nu le arată. BFM se poate folosi doar necomercial.
 - **Schelet și animații** (stat, mers, alergat): X Bot, din exemplele three.js (Mixamo).
 - **Motor grafic:** three.js r169.
+
+---
+Ultima actualizare: 25.09.2026 12:59 (push făcut automat de Claude, din GitHub Desktop).

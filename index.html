@@ -14,12 +14,12 @@
 <link rel="icon" href="assets/icon.png">
 <link rel="preload" as="image" href="assets/splash-portrait.jpg" media="(max-aspect-ratio: 1/1)">
 <link rel="preload" as="image" href="assets/splash-landscape.jpg" media="(min-aspect-ratio: 1/1)">
-<link rel="stylesheet" href="style.css?v=5">
+<link rel="stylesheet" href="style.css?v=7">
 <!-- every module gets the same version tag, so browsers fetch the new files after an update (bump V on each release) -->
 <script type="importmap">{ "imports": {
   "three": "./lib/three.module.min.js",
-  "./js/world.js": "./js/world.js?v=17", "./js/details.js": "./js/details.js?v=17", "./js/brands.js": "./js/brands.js?v=17",
-  "./js/characters.js": "./js/characters.js?v=17", "./js/content.js": "./js/content.js?v=17", "./js/voices.js": "./js/voices.js?v=17", "./js/slug.js": "./js/slug.js?v=17"
+  "./js/world.js": "./js/world.js?v=28", "./js/details.js": "./js/details.js?v=28", "./js/brands.js": "./js/brands.js?v=28",
+  "./js/characters.js": "./js/characters.js?v=28", "./js/content.js": "./js/content.js?v=28", "./js/voices.js": "./js/voices.js?v=28", "./js/slug.js": "./js/slug.js?v=28"
 } }</script>
 </head>
 <body>
@@ -43,11 +43,15 @@
   <button id="bMute" class="pill iconbtn">🔊</button>
   <button id="bTTS" class="pill iconbtn" title="Voci NPC">🗣️</button>
   <button id="bNight" class="pill iconbtn" title="Zi / noapte">🌙</button>
+  <button id="bPhoto" class="pill iconbtn" title="Mod foto (P)">📷</button>
 </div>
 
 <div id="toast"></div>
 <div id="phone" class="hidden"><div class="ph-head"><span id="phFrom"></span><span class="ph-app">WhatsApp</span></div><div id="phText"></div></div>
 <div id="bigmsg"></div>
+<div id="photo" class="hidden"><div class="ptop"><button id="phShot" class="btn">📸 Fă poza</button><button id="phExit" class="btn">✕</button></div><div class="phint">trage ca să rotești camera · ciupește sau rotița pentru zoom</div></div>
+<div id="photoRes" class="hidden"><img id="phImg" alt="poză din joc"><div class="pbtns"><button id="phShare" class="btn">Distribuie</button><button id="phClose" class="btn">Înapoi</button></div><div class="phint">Ține apăsat pe poză ca s-o salvezi</div></div>
+<div id="intro" class="hidden"><div class="l1">DRISTOR</div><div class="l2">Sector 3 · București</div><div class="skip">atinge ca să sari</div></div>
 <div id="flash"></div>
 
 <div id="dialog" class="hidden">
@@ -90,6 +94,6 @@
   <div class="credit">Făcut cu Claude Opus 5.5 · date hartă © OpenStreetMap contributors (ODbL)</div>
 </div>
 
-<script type="module" src="js/game.js?v=17"></script>
+<script type="module" src="js/game.js?v=28"></script>
 </body>
 </html>

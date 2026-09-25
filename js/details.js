@@ -3,7 +3,7 @@
 // metro entrances, market halls, park furniture, lake pier and rooftop billboards with parody ads.
 // Everything small is merged into per-chunk static meshes so the draw-call count stays low on phones.
 import * as THREE from 'three';
-import { Collider, canvasTex } from './world.js';
+import { Collider, canvasTex, fadeNearCamera } from './world.js';
 import { PARODY } from './brands.js';
 
 function hash(n) { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); }
@@ -101,6 +101,22 @@ export function buildDetails(W, opts = {}) {
   const BAD_AREAS = new Set(['parking', 'water', 'pitch', 'market', 'retail', 'rail', 'pool', 'construction', 'pier']);
   const yardOK = (x, z, clr = 2) => roadDist(x, z) > 1.2 && W.offRoad(x, z, 1.5) && !claimed(x, z) && !BAD_AREAS.has(areaAt(x, z)) && free(x, z, clr) && Math.hypot(x, z) < W.radius - 20;
 
+  // ---------- real OSM data: 2000+ mapped trees (genus class + height) and building entrances with their scara letter
+  const RT = new Map(), RG = 8, realTrees = [];
+  const inBuilding = (x, z) => collider.near(x, z).some(p => p.data?.building !== undefined && Collider.inside(p.pts, x, z));
+  const TT = { b: 0, p: 1, f: 2, c: 3, t: 4, w: 5, r: 6 };
+  for (const [x, z, c, h0] of M.trees || []) {
+    if (W.carriageDist(x, z) < 0.7 || inBuilding(x, z) || areaAt(x, z) === 'water') continue;
+    const type = TT[c] ?? 0, H = Math.max(3, Math.min(26, h0 || (type === 2 ? 5 : type === 4 ? 5 : 9)));
+    // scale so that the whole tree is H metres tall (each template has its own unit height)
+    const unit = [7.8, 15.5, 3.8, 1, 1, 7.2, 8.6][type], sc = type === 3 || type === 4 ? H : Math.max(0.5, Math.min(3.2, H / unit));
+    const t = [x, z, type, sc, hash(x * 7.7 + z)]; realTrees.push(t);
+    const k = Math.floor(x / RG) * 100000 + Math.floor(z / RG); if (!RT.has(k)) RT.set(k, []); RT.get(k).push(t);
+  }
+  const nearReal = (x, z, r) => { for (let gx = Math.floor((x - r) / RG); gx <= Math.floor((x + r) / RG); gx++) for (let gz = Math.floor((z - r) / RG); gz <= Math.floor((z + r) / RG); gz++) { const L = RT.get(gx * 100000 + gz); if (L) for (const t of L) if (Math.hypot(t[0] - x, t[1] - z) < r) return true; } return false; };
+  for (const t of realTrees) claim(t[0], t[1], 1);
+  const ENT = (M.entrances || []).map(([x, z, k, ref]) => ({ x, z, k, ref, used: false }));
+
   // ---------- templates
   const T = {};
   T.canopy = tpl([[BOX, '#cfc8bb', 0, 2.75, 0.75, 0, 0, 0, 2.8, 0.18, 1.5],
@@ -153,6 +169,13 @@ export function buildDetails(W, opts = {}) {
   T.fountain = tpl([[CYL8, '#bdb6a8', 0, 0.3, 0, 0, 0, 0, 7, 0.6, 7], [CYL8, '#4d8fb5', 0, 0.55, 0, 0, 0, 0, 6.4, 0.1, 6.4], [CYL8, '#bdb6a8', 0, 1.0, 0, 0, 0, 0, 0.7, 1.4, 0.7], [CYL8, '#bdb6a8', 0, 1.7, 0, 0, 0, 0, 2.0, 0.15, 2.0], [new THREE.ConeGeometry(0.25, 1.4, 8), '#cfe8f5', 0, 2.5, 0]]);
   T.kiosk = tpl([[BOX, '#e9e3d4', 0, 1.3, 0, 0, 0, 0, 2.6, 2.6, 2.0], [BOX, '#6d8aa0', 0, 1.5, 1.01, 0, 0, 0, 2.2, 1.2, 0.02], [BOX, '#1b4f9c', 0, 2.75, 0, 0, 0, 0, 2.8, 0.3, 2.2], [BOX, '#fff', 0, 2.75, 1.11, 0, 0, 0, 2.3, 0.22, 0.01]]);
 
+  T.canopyTop = tpl([[new THREE.ConeGeometry(1.5, 0.55, 8, 1, true), '#ffffff', 0, 2.45, 0]]);
+  T.parasol = tpl([[CYL, '#ddd', 0, 1.2, 0, 0, 0, 0, 0.06, 2.4, 0.06], [CYL8, '#e8e2d6', 0, 0.74, 0, 0, 0, 0, 0.9, 0.04, 0.9], [CYL, '#555', 0, 0.37, 0, 0, 0, 0, 0.08, 0.74, 0.08],
+    [BOX, '#3a3a3a', 0.85, 0.45, 0, 0, 0, 0, 0.42, 0.05, 0.42], [BOX, '#3a3a3a', 1.04, 0.7, 0, 0, 0, 0, 0.04, 0.5, 0.42], [BOX, '#3a3a3a', -0.85, 0.45, 0, 0, 0, 0, 0.42, 0.05, 0.42], [BOX, '#3a3a3a', -1.04, 0.7, 0, 0, 0, 0, 0.04, 0.5, 0.42],
+    [BOX, '#3a3a3a', 0, 0.45, 0.85, 0, 0, 0, 0.42, 0.05, 0.42], [BOX, '#3a3a3a', 0, 0.7, 1.04, 0, 0, 0, 0.42, 0.5, 0.04]]);
+  T.signal = tpl([[CYL, '#3b3f44', 0, 1.7, 0, 0, 0, 0, 0.13, 3.4, 0.13], [BOX, '#151515', 0, 3.25, 0.12, 0, 0, 0, 0.34, 0.95, 0.24], [BOX, '#f2c200', 0, 3.25, 0.0, 0, 0, 0, 0.42, 1.05, 0.04],
+    [BOX, '#ff2a1a', 0, 3.55, 0.25, 0, 0, 0, 0.2, 0.2, 0.03], [BOX, '#5a4a10', 0, 3.25, 0.25, 0, 0, 0, 0.2, 0.2, 0.03], [BOX, '#0f3d1a', 0, 2.95, 0.25, 0, 0, 0, 0.2, 0.2, 0.03],
+    [BOX, '#151515', 0.3, 2.3, 0.1, 0, 0, 0, 0.26, 0.55, 0.2], [BOX, '#ff2a1a', 0.3, 2.42, 0.21, 0, 0, 0, 0.14, 0.14, 0.02], [BOX, '#1a3a1a', 0.3, 2.18, 0.21, 0, 0, 0, 0.14, 0.14, 0.02]]);
   for (const k in T) T[k].name = k; RAIL.name = 'rail'; POST.name = 'post'; PANEL.name = 'panel';
   const tint = (hex) => col3(hex);
   const TREEC = ['#4f7a36', '#5d8a3b', '#6b8f3e', '#48702f', '#557f38', '#7a9a45', '#4a6f33', '#9a9a3a'];
@@ -171,28 +194,44 @@ export function buildDetails(W, opts = {}) {
     const e0 = edges[0], e1 = edges.find(e => e !== e0 && Math.abs(e.ex * e0.ex + e.ez * e0.ez) > 0.9 && (e.nx * e0.nx + e.nz * e0.nz) < 0) || null;
     const rd = (e) => { let d = 0; for (const t of [0.25, 0.5, 0.75]) d += roadDist(e.x1 + (e.x2 - e.x1) * t + e.nx * 10, e.z1 + (e.z2 - e.z1) * t + e.nz * 10); return d; };
     const front = e1 && rd(e1) < rd(e0) ? e1 : e0, back = front === e0 ? e1 : e0;
-    const nSc = Math.max(1, Math.round(front.L / 24));
     const letters = 'ABCDEFGH';
-    for (let k = 0; k < nSc; k++) {
-      const t = (k + 0.5) / nSc * front.L, x = front.x1 + front.ex * t, z = front.z1 + front.ez * t, a = Math.atan2(front.nx, front.nz);
+    // real entrances (OSM entrance nodes on this block's outline) win over the guessed ones
+    let x0 = 1e9, z0 = 1e9, x1 = -1e9, z1 = -1e9; for (const [x, z] of pts) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
+    const doors = [];
+    for (const en of ENT) { if (en.used || en.x < x0 - 4 || en.x > x1 + 4 || en.z < z0 - 4 || en.z > z1 + 4) continue;
+      let best = null; for (let i = 0; i < n; i++) { const [ax, az] = pts[i], [bx, bz] = pts[(i + 1) % n]; const ex = bx - ax, ez = bz - az, L = Math.hypot(ex, ez); if (L < 2.5) continue;
+        let t = ((en.x - ax) * ex + (en.z - az) * ez) / (L * L); t = Math.max(1.3 / L, Math.min(1 - 1.3 / L, t)); const px = ax + ex * t, pz = az + ez * t, d = Math.hypot(en.x - px, en.z - pz);
+        if (!best || d < best.d) best = { d, px, pz, ex: ex / L, ez: ez / L, nx: ez / L, nz: -ex / L }; }
+      if (best && best.d < 4) { en.used = true; doors.push({ ...best, ref: en.ref }); } }
+    const guessed = [];
+    if (!doors.length) { const nSc = Math.max(1, Math.round(front.L / 24)); for (let k = 0; k < nSc; k++) { const t = (k + 0.5) / nSc * front.L; guessed.push({ px: front.x1 + front.ex * t, pz: front.z1 + front.ez * t, ex: front.ex, ez: front.ez, nx: front.nx, nz: front.nz, ref: letters[k % 8] }); } }
+    const allDoors = doors.length ? doors : guessed;
+    for (let k = 0; k < allDoors.length; k++) {
+      const D = allDoors[k], x = D.px, z = D.pz, a = Math.atan2(D.nx, D.nz); const front = { ex: D.ex, ez: D.ez, nx: D.nx, nz: D.nz };
       B.add(T.canopy, x + front.nx * 0.02, 0, z + front.nz * 0.02, a); count('scari');
       claim(x + front.nx * 3, z + front.nz * 3, 3);
-      if (b.name && /^(Bl|Bloc)/i.test(b.name)) plaques.push({ x: x + front.ex * 1.1 + front.nx * 0.07, z: z + front.ez * 1.1 + front.nz * 0.07, a, text: b.name.replace(/^Bloc\s*/i, 'Bl. ').replace(/^Bl\.?\s*/i, 'Bl. ') + ' · Sc. ' + letters[k % 8] });
+      const bl = b.name && /^(Bl|Bloc)/i.test(b.name) ? b.name.replace(/^Bloc\s*/i, 'Bl. ').replace(/^Bl\.?\s*/i, 'Bl. ') : '';
+      if (bl || (doors.length && D.ref)) plaques.push({ x: x + front.ex * 1.1 + front.nx * 0.07, z: z + front.ez * 1.1 + front.nz * 0.07, a, text: (bl ? bl + ' · ' : '') + 'Sc. ' + (D.ref || letters[k % 8]) });
+      if (doors.length) count('realDoors');
       // benches either side of the door (the pensioners' observation post)
       for (const sd of [-1, 1]) if (hash(b.id * 7 + k * 3 + sd) < 0.55) { const bx = x + front.ex * sd * 3.2 + front.nx * 2.2, bz = z + front.ez * sd * 3.2 + front.nz * 2.2; if (free(bx, bz, 0.8) && roadDist(bx, bz) > 0.5) { BN.add(T.bench, bx, 0, bz, a); box(bx, bz, a, 0.9, 0.25, 0.9); count('bench'); } }
       if (hash(b.id * 13 + k) < 0.35) { const bx = x + front.ex * 6 + front.nx * 4, bz = z + front.ez * 6 + front.nz * 4; if (yardOK(bx, bz, 1.5)) { BN.add(T.bins, bx, 0, bz, a); box(bx, bz, a, 2, 0.6, 1.3); claim(bx, bz, 3); count('bins'); } }
     }
-    // front gardens with low green fences on the back side (ground-floor flats' little plots)
-    if (back && back.L > 14 && hash(b.id * 3.3) < 0.6) {
-      const depth = 3 + hash(b.id) * 2.5, a = Math.atan2(back.ex, back.ez);
-      { const fl = back.L - 2, fx = back.x1 + back.ex * (1 + fl / 2) + back.nx * depth, fz = back.z1 + back.ez * (1 + fl / 2) + back.nz * depth;
+    // gardens go on the long side without doors
+    const onEdge = (d, e) => { if (!e) return false; const t = (d.px - e.x1) * e.ex + (d.pz - e.z1) * e.ez; return t > -1 && t < e.L + 1 && Math.abs((d.px - e.x1) * e.nx + (d.pz - e.z1) * e.nz) < 1.5; };
+    const gs = doors.some(d => onEdge(d, back)) ? (doors.some(d => onEdge(d, front)) ? null : front) : back;
+    // front gardens with low green fences on the gs side (ground-floor flats' little plots)
+    const gDepth = gs ? 3 + hash(b.id) * 2.5 : 0;
+    if (gs && gs.L > 14 && hash(b.id * 3.3) < 0.6 && [0, 0.5, 1].every(t => W.carriageDist(gs.x1 + (gs.x2 - gs.x1) * t + gs.nx * gDepth, gs.z1 + (gs.z2 - gs.z1) * t + gs.nz * gDepth) > 0.8)) {
+      const depth = gDepth, a = Math.atan2(gs.ex, gs.ez);
+      { const fl = gs.L - 2, fx = gs.x1 + gs.ex * (1 + fl / 2) + gs.nx * depth, fz = gs.z1 + gs.ez * (1 + fl / 2) + gs.nz * depth;
         if (roadDist(fx, fz) > 0.5) { BF.add(RAIL, fx, 0.45, fz, a + Math.PI / 2, fl, 1, 1, FCOL); BF.add(RAIL, fx, 0.85, fz, a + Math.PI / 2, fl, 1, 1, FCOL);
-          for (let s = 1; s <= back.L - 1; s += 3.5) BF.add(POST, back.x1 + back.ex * s + back.nx * depth, 0, back.z1 + back.ez * s + back.nz * depth, a, 1, 1, 1, FCOL); } }
-      for (let s = 2; s < back.L - 2; s += 2.2) { const x = back.x1 + back.ex * s + back.nx * (depth * 0.5), z = back.z1 + back.ez * s + back.nz * (depth * 0.5); if (roadDist(x, z) < 0.5) continue;
+          for (let s = 1; s <= gs.L - 1; s += 3.5) BF.add(POST, gs.x1 + gs.ex * s + gs.nx * depth, 0, gs.z1 + gs.ez * s + gs.nz * depth, a, 1, 1, 1, FCOL); } }
+      for (let s = 2; s < gs.L - 2; s += 2.2) { const x = gs.x1 + gs.ex * s + gs.nx * (depth * 0.5), z = gs.z1 + gs.ez * s + gs.nz * (depth * 0.5); if (roadDist(x, z) < 0.5) continue;
         const r = hash(b.id * 17 + s); if (r < 0.22) B.add(T.bush, x, 0, z, r * 9, 0.8 + r, 0.8 + r, 0.8 + r, tint(TREEC[(r * 7) | 0])); else if (r < 0.27) BN.add(T.tyre, x, 0, z, r * 5); else if (r < 0.34) trees.push([x, z, 2, 0.7 + r * 0.5, r]); }
-      const [ax, az] = [back.x1 + back.nx * depth, back.z1 + back.nz * depth], [bx2, bz2] = [back.x2 + back.nx * depth, back.z2 + back.nz * depth];
-      collider.add([[back.x1, back.z1], [back.x2, back.z2], [bx2, bz2], [ax, az]], { h: 0.95 }); count('gardens');
-      for (let s = 0; s < back.L; s += 3) claim(back.x1 + back.ex * s + back.nx * depth / 2, back.z1 + back.ez * s + back.nz * depth / 2, depth / 2 + 1);
+      const [ax, az] = [gs.x1 + gs.nx * depth, gs.z1 + gs.nz * depth], [bx2, bz2] = [gs.x2 + gs.nx * depth, gs.z2 + gs.nz * depth];
+      collider.add([[gs.x1, gs.z1], [gs.x2, gs.z2], [bx2, bz2], [ax, az]], { h: 0.95 }); count('gardens');
+      for (let s = 0; s < gs.L; s += 3) claim(gs.x1 + gs.ex * s + gs.nx * depth / 2, gs.z1 + gs.ez * s + gs.nz * depth / 2, depth / 2 + 1);
     }
     // carpet beater and clothes dryer somewhere in front, 9-20 m out
     for (const [tp, pr, hw, hl] of [[T.beater, 0.75, 1.6, 0.2], [T.dryer, 0.5, 2.7, 0.7]]) {
@@ -221,6 +260,7 @@ export function buildDetails(W, opts = {}) {
       if (r > 0.42) continue;
       if (!yardOK(jx, jz, r < 0.3 ? 3 : 2)) { occ.add(occKey(jx, jz)); continue; }
       occ.add(occKey(jx, jz));
+      if (r < 0.3 && nearReal(jx, jz, 9)) continue;
       if (r < 0.3) { trees.push([jx, jz, r < 0.07 ? 1 : 0, 0.8 + hash(jx) * 0.7, hash(jz)]); }
       else if (r < 0.345) { B.add(T.bush, jx, 0, jz, r * 20, 0.9, 0.9, 0.9, tint(TREEC[(hash(jx + 1) * 5) | 0])); }
       else if (r > 0.385 && r < 0.395) { const a = hash(jx) * 6; BN.add(T.table, jx, 0, jz, a); box(jx, jz, a, 0.9, 1.2, 0.9); claim(jx, jz, 3); count('table'); }
@@ -230,7 +270,7 @@ export function buildDetails(W, opts = {}) {
   // OSM tree rows
   for (const tr of M.treerows || []) { const pts = tr.p.map(([x, z]) => [x / 10, z / 10]);
     for (let i = 0; i < pts.length - 1; i++) { const [xa, za] = pts[i], [xb, zb] = pts[i + 1]; const L = Math.hypot(xb - xa, zb - za);
-      for (let s = 0; s < L; s += 8) { const x = xa + (xb - xa) * s / L, z = za + (zb - za) * s / L; if (free(x, z, 1)) trees.push([x, z, 0, 1.1, hash(x)]); } } }
+      for (let s = 0; s < L; s += 8) { const x = xa + (xb - xa) * s / L, z = za + (zb - za) * s / L; if (free(x, z, 1) && W.carriageDist(x, z) > 0.8 && !nearReal(x, z, 4)) trees.push([x, z, 0, 1.1, hash(x)]); } } }
 
   // ---------- 3) playgrounds (OSM areas + nodes) with swings, slide, climbing globe, sandbox, spring rider and benches around
   const playSpots = [];
@@ -321,6 +361,48 @@ export function buildDetails(W, opts = {}) {
   }
   world.userData.metroMats = [mMat];
 
+  const tramStopsOut = [];
+  // ---------- 6b) tram stops: raised concrete platform along the track, shelter and the real stop name
+  { const railSegs = []; for (const r of M.rails || []) if (r.k === 'tram') { const pts = r.p.map(([x, z]) => [x / 10, z / 10]); for (let i = 0; i < pts.length - 1; i++) railSegs.push([...pts[i], ...pts[i + 1]]); }
+    const nearestRail = (x, z) => { let best = null; for (const [x1, z1, x2, z2] of railSegs) { const ex = x2 - x1, ez = z2 - z1, L2 = ex * ex + ez * ez || 1; let t = ((x - x1) * ex + (z - z1) * ez) / L2; t = t < 0 ? 0 : t > 1 ? 1 : t; const px = x1 + ex * t, pz = z1 + ez * t, d = Math.hypot(x - px, z - pz); if (!best || d < best.d) { const L = Math.sqrt(L2); best = { d, px, pz, ux: ex / L, uz: ez / L }; } } return best; };
+    const PLAT = tpl([[BOX, '#b8b2a6', 0, 0.15, 0, 0, 0, 0, 2.6, 0.3, 24], [BOX, '#f2c200', -1.22, 0.305, 0, 0, 0, 0, 0.16, 0.01, 24], [BOX, '#8f8a80', 1.3, 0.35, 0, 0, 0, 0, 0.05, 0.9, 24]]);
+    const SHEL = tpl([[BOX, '#5b6166', 0, 2.8, 0, 0, 0, 0, 1.9, 0.1, 5.2], [BOX, '#5b6166', 0.75, 1.55, -2.5, 0, 0, 0, 0.08, 2.5, 0.08], [BOX, '#5b6166', 0.75, 1.55, 2.5, 0, 0, 0, 0.08, 2.5, 0.08], [BOX, '#9fc3d6', 0.8, 1.6, 0, 0, 0, 0, 0.03, 1.9, 4.9], [BOX, '#777', 0.5, 0.75, 0, 0, 0, 0, 0.4, 0.06, 3.0]]);
+    const stops = [], names = [];
+    for (const p of W.pois) if (p.k === 'tram_stop') { const nr = nearestRail(p.x, p.z); if (!nr || nr.d > 14) continue;
+      let sx = p.x - nr.px, sz = p.z - nr.pz; const sl = Math.hypot(sx, sz); const nx = -nr.uz, nz = nr.ux; const side = sl > 0.3 ? Math.sign(sx * nx + sz * nz) || 1 : 1;
+      const cx = nr.px + nx * side * 2.75, cz = nr.pz + nz * side * 2.75, a = Math.atan2(nr.ux, nr.uz);
+      if (stops.some(([x, z]) => Math.hypot(x - cx, z - cz) < 20)) continue; stops.push([cx, cz]);
+      const flip = side > 0 ? Math.PI : 0;   // the yellow safety line faces the track
+      B.add(PLAT, cx, 0, cz, a + flip); BM.add(SHEL, cx, 0.3, cz, a + flip + Math.PI);
+      const c = Math.cos(a), s = Math.sin(a); collider.add([[-1.3, -12], [1.3, -12], [1.3, 12], [-1.3, 12]].map(([u, v]) => [cx + u * c + v * s, cz - u * s + v * c]), { h: 0.3, walkable: true });
+      names.push({ x: cx - nx * side * 0.2, z: cz - nz * side * 0.2, a: Math.atan2(nx * side, nz * side), text: (p.n || 'Stație').toUpperCase() }); count('tramStop'); tramStopsOut.push([nr.px, nr.pz]); }
+    if (names.length) { const cw = 512, chh = 56, rows = names.length;
+      const atlas = canvasTex(cw, rows * chh, (g) => names.forEach((n, i) => { const y = i * chh; g.fillStyle = '#0b3a75'; g.fillRect(0, y + 1, cw, chh - 2); g.fillStyle = '#fff'; g.font = 'bold 30px Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(n.text, cw / 2, y + chh / 2 + 1, cw - 20); }));
+      const pos = [], uv = [], nor = [];
+      names.forEach((n, i) => { const v1 = 1 - i / rows, v0 = v1 - 1 / rows, w = 4.2, h = 0.45, y = 3.35, ex = Math.cos(n.a), ez = -Math.sin(n.a), nx = Math.sin(n.a), nz = Math.cos(n.a);
+        for (const f of [1, -1]) { const ox = nx * 0.06 * f, oz = nz * 0.06 * f, sx = ex * f, sz = ez * f;
+          const A = [n.x - sx * w / 2 + ox, y - h / 2, n.z - sz * w / 2 + oz], Bq = [n.x + sx * w / 2 + ox, y - h / 2, n.z + sz * w / 2 + oz], C = [n.x + sx * w / 2 + ox, y + h / 2, n.z + sz * w / 2 + oz], Dq = [n.x - sx * w / 2 + ox, y + h / 2, n.z - sz * w / 2 + oz];
+          for (const [P, U] of [[A, [0, v0]], [Bq, [1, v0]], [C, [1, v1]], [A, [0, v0]], [C, [1, v1]], [Dq, [0, v1]]]) { pos.push(...P); uv.push(...U); nor.push(nx * f, 0, nz * f); } } });
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); g.computeBoundingSphere();
+      const mm = new THREE.MeshStandardMaterial({ map: atlas, emissive: '#ffffff', emissiveMap: atlas, emissiveIntensity: 0.3, side: THREE.DoubleSide }); root.add(new THREE.Mesh(g, mm)); world.userData.signExtra?.push(mm); } }
+
+  // ---------- 6c) sports pitches (real OSM pitches with their sport): goals, hoops, tennis nets and white lines
+  { const GOAL = tpl((() => { const p = [[BOX, '#ffffff', -1.5, 1.0, 0, 0, 0, 0, 0.12, 2.0, 0.12], [BOX, '#ffffff', 1.5, 1.0, 0, 0, 0, 0, 0.12, 2.0, 0.12], [BOX, '#ffffff', 0, 2.0, 0, 0, 0, 0, 3.12, 0.12, 0.12],
+      [BOX, '#dddddd', -1.5, 1.0, -1.0, 0, 0, 0, 0.05, 2.0, 0.05], [BOX, '#dddddd', 1.5, 1.0, -1.0, 0, 0, 0, 0.05, 2.0, 0.05], [BOX, '#dddddd', 0, 2.0, -1.0, 0, 0, 0, 3.0, 0.04, 0.04], [BOX, '#dddddd', -1.5, 2.0, -0.5, 0, 0, 0, 0.04, 0.04, 1.0], [BOX, '#dddddd', 1.5, 2.0, -0.5, 0, 0, 0, 0.04, 0.04, 1.0]];
+      for (let k = -1; k <= 1; k += 0.5) p.push([BOX, '#e8e8e8', k * 1.5, 1.0, -1.0, 0, 0, 0, 0.015, 2.0, 0.015]); for (let yy = 0.5; yy < 2; yy += 0.5) p.push([BOX, '#e8e8e8', 0, yy, -1.0, 0, 0, 0, 3.0, 0.015, 0.015]); return p; })());
+    const HOOP = tpl([[CYL, '#2d5e9e', 0, 1.5, -0.9, 0, 0, 0, 0.14, 3.0, 0.14], [BOX, '#2d5e9e', 0, 3.0, -0.45, 0, 0, 0, 0.1, 0.1, 0.9], [BOX, '#ffffff', 0, 3.25, 0, 0, 0, 0, 1.8, 1.05, 0.05],
+      [BOX, '#e33', 0, 3.2, 0.03, 0, 0, 0, 0.6, 0.45, 0.01], [new THREE.TorusGeometry(0.23, 0.02, 4, 10), '#ff6a00', 0, 3.05, 0.3, Math.PI / 2]]);
+    const NET = tpl([[BOX, '#222', 0, 0.48, 0, 0, 0, 0, 1, 0.9, 0.02], [BOX, '#f4f4f4', 0, 0.95, 0, 0, 0, 0, 1, 0.06, 0.04]]);
+    const lp = [], y = 0.2, line = (ax, az, bx, bz, hw = 0.05) => { const L = Math.hypot(bx - ax, bz - az) || 1, nx = -(bz - az) / L * hw, nz = (bx - ax) / L * hw; lp.push(ax + nx, y, az + nz, bx + nx, y, bz + nz, bx - nx, y, bz - nz, ax + nx, y, az + nz, bx - nx, y, bz - nz, ax - nx, y, az - nz); };
+    for (const [cx, cz, a, l0, w0, sp0] of M.pitches || []) { const l = Math.max(12, l0 - 2), w = Math.max(8, w0 - 2); const sp = sp0 || (l >= 30 ? 'soccer' : 'basketball');
+      const ux = Math.sin(a), uz = Math.cos(a), vx = uz, vz = -ux, P = (s, t) => [cx + ux * s + vx * t, cz + uz * s + vz * t];
+      const c = [P(-l / 2, -w / 2), P(l / 2, -w / 2), P(l / 2, w / 2), P(-l / 2, w / 2)]; for (let i = 0; i < 4; i++) line(...c[i], ...c[(i + 1) % 4]);
+      line(...P(0, -w / 2), ...P(0, w / 2));
+      if (/soccer|football/.test(sp)) { for (const sd of [-1, 1]) { const [gx, gz] = P(sd * (l / 2 - 0.2), 0); B.add(GOAL, gx, 0, gz, a + (sd > 0 ? 0 : Math.PI)); box(gx, gz, a, 1.6, 0.5, 2.1); } const [mx, mz] = P(0, 0); for (let k = 0; k < 16; k++) { const t0 = k / 16 * 6.283, t1 = (k + 1) / 16 * 6.283; line(mx + Math.cos(t0) * 3, mz + Math.sin(t0) * 3, mx + Math.cos(t1) * 3, mz + Math.sin(t1) * 3); } count('goals', 2); }
+      else if (/basket/.test(sp)) { for (const sd of [-1, 1]) { const [hx, hz] = P(sd * (l / 2 - 0.6), 0); B.add(HOOP, hx, 0, hz, a + (sd > 0 ? 0 : Math.PI)); box(hx, hz, a, 0.2, 0.2, 99); } count('hoops', 2); }
+      else if (/tennis|padel/.test(sp)) { const [nx2, nz2] = P(0, 0); B.add(NET, nx2, 0, nz2, a + Math.PI / 2, w + 1, 1, 1); count('nets'); } }
+    if (lp.length) { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(lp, 3)); g.computeBoundingSphere(); const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: '#f2f2ec', side: THREE.DoubleSide, depthWrite: false })); m.renderOrder = -4; root.add(m); } }
+
   // ---------- 7) markets: rows of covered stalls with produce crates
   for (const a of W.areas) if (a.k === 'market') {
     let lg = null; for (let i = 0; i < a.pts.length; i++) { const [x1, z1] = a.pts[i], [x2, z2] = a.pts[(i + 1) % a.pts.length]; const L = Math.hypot(x2 - x1, z2 - z1); if (!lg || L > lg.L) lg = { L, ux: (x2 - x1) / L, uz: (z2 - z1) / L }; }
@@ -334,6 +416,16 @@ export function buildDetails(W, opts = {}) {
       BM.add(T.stall, x, 0, z, ang + flip); BN.add(T.crates, x, 0, z, ang + flip); box(x, z, ang, 1.6, 1.3, 2.6); n++; }
     count('stall', n);
   }
+
+  // ---------- 7b) park terraces: parasols with tables and chairs in front of the café pavilions
+  { const PC = ['#c8102e', '#2e7d4f', '#f4efe4', '#1b4f9c', '#f2a900'];
+    for (const b of W.buildings) if (b.special === 'pavilion') { const n = b.pts.length; let lg = null;
+      for (let i = 0; i < n; i++) { const [x1, z1] = b.pts[i], [x2, z2] = b.pts[(i + 1) % n]; const L = Math.hypot(x2 - x1, z2 - z1); if (!lg || L > lg.L) lg = { L, x1, z1, ex: (x2 - x1) / L, ez: (z2 - z1) / L, nx: (z2 - z1) / L, nz: -(x2 - x1) / L }; }
+      let placed = 0; const col = tint(PC[(hash(b.id) * PC.length) | 0]);
+      for (let row = 0; row < 3; row++) for (let s = 2; s < lg.L - 1.5; s += 3.6) { const out = 4.2 + row * 3.4 + (row % 2) * 0.3, x = lg.x1 + lg.ex * (s + (row % 2) * 1.8) + lg.nx * out, z = lg.z1 + lg.ez * (s + (row % 2) * 1.8) + lg.nz * out;
+        if (!free(x, z, 1.4) || W.carriageDist(x, z) < 2 || roadDist(x, z) < -1 || areaAt(x, z) === 'water') continue;
+        B.add(T.parasol, x, 0, z, hash(x + z) * 6); B.add(T.canopyTop, x, 0, z, 0, 1, 1, 1, col); box(x, z, 0, 0.5, 0.5, 1.0); claim(x, z, 2); placed++; }
+      count('terraceTables', placed); } }
 
   // ---------- 8) rooftop billboards on tall blocks next to the big boulevards (parody ads)
   { const ads = PARODY.filter(p => !p[5]).slice(0); let used = 0; const bb = [];
@@ -349,42 +441,104 @@ export function buildDetails(W, opts = {}) {
         BM.add(tpl([[BOX, '#4a4f55', 0, 0, 0, 0, 0, 0, W2, 0.12, 0.12]]), px - nx * 0.3, b.h + 1.6, pz - nz * 0.3, Math.atan2(nx, nz));
         bb.push([mx, mz]); used++; count('billboard'); break; } } }
 
-  // ---------- trees: three kinds, instanced per chunk
+  // ---------- trees: seven kinds (broadleaf, poplar, fruit, conifer, thuja, willow, birch), instanced per chunk
+  for (const t of realTrees) trees.push(t);
   { const trunkG = new THREE.CylinderGeometry(0.14, 0.24, 1, 5, 1, true); trunkG.translate(0, 0.5, 0);
-    const roundG = new THREE.IcosahedronGeometry(1, 0); const poplarG = new THREE.IcosahedronGeometry(1, 0); const fruitG = new THREE.IcosahedronGeometry(1, 0);
-    const trunkM = new THREE.MeshStandardMaterial({ color: '#6e5238', roughness: 1 }), leafM = new THREE.MeshStandardMaterial({ color: '#fff', roughness: 0.9, flatShading: true });
+    const ico = new THREE.IcosahedronGeometry(1, 0); const cone = new THREE.ConeGeometry(1, 1, 7, 1); cone.translate(0, 0.5, 0);
+    const willowG = new THREE.IcosahedronGeometry(1, 1); { const p = willowG.attributes.position; for (let i = 0; i < p.count; i++) { const y = p.getY(i); if (y < 0.2) { p.setX(i, p.getX(i) * 1.12); p.setZ(i, p.getZ(i) * 1.12); p.setY(i, y - 0.25); } } willowG.computeVertexNormals(); }
+    const GEO = [ico, ico, ico, cone, cone, willowG, ico];
+    const COLS = [TREEC, TREEC, ['#5d8a3b', '#6b8f3e', '#7a9a45', '#e6b8c8'], ['#2d4f2a', '#34572e', '#3c5f33', '#2a4a30'], ['#2f5a2a', '#3a6630', '#335c2c'], ['#8fae4a', '#9ab653', '#86a544'], ['#7fa347', '#8cb052', '#94b35a']];
+    const trunkM = new THREE.MeshStandardMaterial({ color: '#fff', roughness: 1 }), leafM = fadeNearCamera(new THREE.MeshStandardMaterial({ color: '#fff', roughness: 0.9, flatShading: true }));
+    const BARK = new THREE.Color('#6e5238'), BIRCH = new THREE.Color('#e8e4da');
     const groups = new Map();
     for (const t of trees) { const k = Math.floor(t[0] / 280) + ':' + Math.floor(t[1] / 280); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(t); collider.add([[t[0] - .3, t[1] - .3], [t[0] + .3, t[1] - .3], [t[0] + .3, t[1] + .3], [t[0] - .3, t[1] + .3]], { tree: true, h: 99 }); }
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), v = new THREE.Vector3(), s = new THREE.Vector3(), c = new THREE.Color();
     for (const list of groups.values()) {
-      const byType = [[], [], []]; for (const t of list) byType[t[2]].push(t);
+      const byType = [[], [], [], [], [], [], []]; for (const t of list) byType[t[2]].push(t);
       const tr = new THREE.InstancedMesh(trunkG, trunkM, list.length); let ti = 0;
-      byType.forEach((L, type) => { if (!L.length) return; const im = new THREE.InstancedMesh(type === 0 ? roundG : type === 1 ? poplarG : fruitG, leafM, L.length);
-        L.forEach(([x, z, , sc, cr], i) => { const ry = cr * 6.28;
-          if (type === 0) { const H = 3.2 * sc; tr.setMatrixAt(ti++, m4.compose(v.set(x, 0, z), q.setFromAxisAngle(up, ry), s.set(sc, H, sc))); im.setMatrixAt(i, m4.compose(v.set(x, H + 2.2 * sc, z), q, s.set(2.8 * sc, 2.4 * sc, 2.8 * sc))); }
-          else if (type === 1) { const H = 2.5 * sc; tr.setMatrixAt(ti++, m4.compose(v.set(x, 0, z), q.setFromAxisAngle(up, ry), s.set(sc, H, sc))); im.setMatrixAt(i, m4.compose(v.set(x, H + 6 * sc, z), q, s.set(1.5 * sc, 7 * sc, 1.5 * sc))); }
-          else { const H = 1.4 * sc; tr.setMatrixAt(ti++, m4.compose(v.set(x, 0, z), q.setFromAxisAngle(up, ry), s.set(0.6 * sc, H, 0.6 * sc))); im.setMatrixAt(i, m4.compose(v.set(x, H + 1.1 * sc, z), q, s.set(1.6 * sc, 1.3 * sc, 1.6 * sc))); }
-          im.setColorAt(i, c.set(TREEC[(cr * (type === 2 ? 4 : TREEC.length)) | 0]).offsetHSL(0, 0, (hash(x) - 0.5) * 0.08)); });
+      byType.forEach((L, type) => { if (!L.length) return; const im = new THREE.InstancedMesh(GEO[type], leafM, L.length);
+        L.forEach(([x, z, , sc, cr], i) => { const ry = cr * 6.28; q.setFromAxisAngle(up, ry); const lean = 0.92 + cr * 0.16;
+          const T0 = (H, w) => { w = Math.min(w, 0.7 + w * 0.25); tr.setMatrixAt(ti, m4.compose(v.set(x, 0, z), q, s.set(w, H, w))); tr.setColorAt(ti++, type === 6 ? BIRCH : BARK); };
+          if (type === 0) { const H = 3.2 * sc; T0(H, sc); im.setMatrixAt(i, m4.compose(v.set(x, H + 2.2 * sc, z), q, s.set(2.8 * sc * lean, 2.4 * sc, 2.8 * sc / lean))); }
+          else if (type === 1) { const H = 2.5 * sc; T0(H, sc); im.setMatrixAt(i, m4.compose(v.set(x, H + 6 * sc, z), q, s.set(1.5 * sc, 7 * sc, 1.5 * sc))); }
+          else if (type === 2) { const H = 1.4 * sc; T0(H, 0.6 * sc); im.setMatrixAt(i, m4.compose(v.set(x, H + 1.1 * sc, z), q, s.set(1.6 * sc, 1.3 * sc, 1.6 * sc))); }
+          else if (type === 3) { T0(0.25 * sc, 0.12 * sc); im.setMatrixAt(i, m4.compose(v.set(x, 0.12 * sc, z), q, s.set(0.24 * sc * lean, 0.88 * sc, 0.24 * sc))); }
+          else if (type === 4) { T0(0.3, 0.5); im.setMatrixAt(i, m4.compose(v.set(x, 0.1, z), q, s.set(0.19 * sc, sc, 0.19 * sc))); }
+          else if (type === 5) { const H = 2.4 * sc; T0(H, 1.2 * sc); im.setMatrixAt(i, m4.compose(v.set(x, H + 2.2 * sc, z), q, s.set(3.2 * sc, 2.6 * sc, 3.2 * sc))); }
+          else { const H = 3.6 * sc; T0(H, 0.7 * sc); im.setMatrixAt(i, m4.compose(v.set(x, H + 2.4 * sc, z), q, s.set(1.9 * sc, 2.6 * sc, 1.9 * sc))); }
+          const C = COLS[type]; im.setColorAt(i, c.set(C[(cr * C.length) | 0]).offsetHSL(0, 0, (hash(x) - 0.5) * 0.08)); });
         im.castShadow = true; im.receiveShadow = true; im.computeBoundingSphere(); root.add(im); });
       tr.count = ti; tr.castShadow = true; tr.computeBoundingSphere(); root.add(tr);
     }
-    count('trees', trees.length); }
+    count('trees', trees.length); count('realTrees', realTrees.length); }
+
+  const signalsOut = [];
+  // ---------- real pedestrian crossings (zebra stripes across the carriageway) and traffic lights
+  { const mp = [], y = 0.215; let nc = 0, ns = 0;
+    const stripe = (ax, az, ux, uz, nx, nz, hw, hl) => mp.push(ax - nx * hw - ux * hl, y, az - nz * hw - uz * hl, ax + nx * hw - ux * hl, y, az + nz * hw - uz * hl, ax + nx * hw + ux * hl, y, az + nz * hw + uz * hl,
+      ax - nx * hw - ux * hl, y, az - nz * hw - uz * hl, ax + nx * hw + ux * hl, y, az + nz * hw + uz * hl, ax - nx * hw + ux * hl, y, az - nz * hw + uz * hl);
+    for (const [x, z, k] of M.cross || []) { const nr = nearestRoad(x, z, 6); if (!nr || nr.d > 5 || k === 'u') continue;
+      const L = Math.hypot(nr.s.x2 - nr.s.x1, nr.s.z2 - nr.s.z1) || 1, ux = (nr.s.x2 - nr.s.x1) / L, uz = (nr.s.z2 - nr.s.z1) / L, nx = -uz, nz = ux;
+      for (let o = -nr.s.w / 2 + 0.5; o < nr.s.w / 2 - 0.3; o += 1.0) stripe(nr.px + nx * o, nr.pz + nz * o, ux, uz, nx, nz, 0.25, 1.6);
+      nc++; }
+    const sigSeen = [];
+    for (const [x, z] of M.signals || []) { const nr = nearestRoad(x, z, 6); if (!nr || nr.d > 12) continue;
+      const L = Math.hypot(nr.s.x2 - nr.s.x1, nr.s.z2 - nr.s.z1) || 1, ux = (nr.s.x2 - nr.s.x1) / L, uz = (nr.s.z2 - nr.s.z1) / L, nx = -uz, nz = ux;
+      const sig = { x: nr.px, z: nr.pz, ux, uz, w: nr.s.w, lights: [] }; signalsOut.push(sig);
+      for (const sd of [-1, 1]) { const off = nr.s.w / 2 + 0.9, px = nr.px + nx * off * sd - ux * sd * 3, pz = nr.pz + nz * off * sd - uz * sd * 3;
+        if (sigSeen.some(([a, b]) => Math.hypot(a - px, b - pz) < 6) || inBuilding(px, pz) || W.carriageDist(px, pz) < 0.4) continue;
+        const a = Math.atan2(ux * sd, uz * sd) + Math.PI, ca = Math.cos(a), sa = Math.sin(a);
+        sigSeen.push([px, pz]); BM.add(T.signal, px, 0, pz, a); box(px, pz, 0, 0.15, 0.15, 99); ns++;
+        for (const [ly, c] of [[3.55, 'r'], [3.25, 'y'], [2.95, 'g']]) sig.lights.push([px + 0.28 * sa, ly, pz + 0.28 * ca, c]);
+        sig.lights.push([px + 0.3 * ca + 0.22 * sa, 2.42, pz - 0.3 * sa + 0.22 * ca, 'pr'], [px + 0.3 * ca + 0.22 * sa, 2.18, pz - 0.3 * sa + 0.22 * ca, 'pg']); } }
+    if (mp.length) { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(mp, 3)); g.computeBoundingSphere();
+      const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: '#ecebe4', side: THREE.DoubleSide, depthWrite: false })); m.renderOrder = -4; root.add(m); }
+    count('crossings', nc); count('signals', ns); }
+
+  // ---------- street name plates at real intersections (blue Bucharest plates: "Str. Dristorului · Sector 3")
+  const streetSigns = [];
+  { const abbr = (n) => n.replace(/^Strada /, 'Str. ').replace(/^Bulevardul /, 'Bd. ').replace(/^Șoseaua /, 'Șos. ').replace(/^Aleea /, 'Al. ').replace(/^Intrarea /, 'Intr. ').replace(/^Splaiul /, 'Spl. ');
+    const J = new Map(), key = (x, z) => Math.round(x / 3) + ',' + Math.round(z / 3);
+    for (const r of W.roads) { if (!r.n || r.w < 6) continue; r.pts.forEach(([x, z], i) => { const k = key(x, z); if (!J.has(k)) J.set(k, []); J.get(k).push({ r, i, x, z }); }); }
+    const done = [];
+    for (const list of J.values()) { const names = [...new Set(list.map(e => e.r.n))]; if (names.length < 2) continue;
+      const { x: jx, z: jz } = list[0]; if (done.some(([a, b]) => Math.hypot(a - jx, b - jz) < 25)) continue; done.push([jx, jz]);
+      for (const nm of names.slice(0, 2)) { const e = list.find(q => q.r.n === nm), other = list.find(q => q.r.n !== nm); const P = e.r.pts; const j = e.i < P.length - 1 ? e.i + 1 : e.i - 1; if (j < 0) continue;
+        const L = Math.hypot(P[j][0] - jx, P[j][1] - jz) || 1, ux = (P[j][0] - jx) / L, uz = (P[j][1] - jz) / L, nx = -uz, nz = ux;
+        const along = other.r.w / 2 + 3.2, side = e.r.w / 2 + 1.4;
+        for (const sd of [1, -1]) { const x = jx + ux * along + nx * side * sd, z = jz + uz * along + nz * side * sd;
+          if (W.carriageDist(x, z) < 0.5 || inBuilding(x, z) || !free(x, z, 0.3)) continue;
+          streetSigns.push({ x, z, a: Math.atan2(ux, uz), text: abbr(nm) }); BM.add(tpl([[CYL, '#6c7278', 0, 1.45, 0, 0, 0, 0, 0.07, 2.9, 0.07]]), x, 0, z); box(x, z, 0, 0.1, 0.1, 99); break; } } }
+    if (streetSigns.length) { const uniq = [...new Set(streetSigns.map(s => s.text))].slice(0, 256), cols = 8, cw = 256, chh = 64, rows = Math.ceil(uniq.length / cols);
+      const atlas = canvasTex(cols * cw, rows * chh, (g) => uniq.forEach((t, i) => { const x = (i % cols) * cw, y = Math.floor(i / cols) * chh;
+        g.fillStyle = '#123f86'; g.fillRect(x + 1, y + 1, cw - 2, chh - 2); g.strokeStyle = '#fff'; g.lineWidth = 3; g.strokeRect(x + 5, y + 5, cw - 10, chh - 10);
+        g.fillStyle = '#fff'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = 'bold 25px Arial, sans-serif'; g.fillText(t, x + cw / 2, y + 26, cw - 20); g.font = '13px Arial, sans-serif'; g.fillText('SECTOR 3', x + cw / 2, y + 48); }));
+      const pos = [], uv = [], nor = [];
+      for (const s of streetSigns) { const i = uniq.indexOf(s.text); if (i < 0) continue; const u0 = (i % cols) / cols, u1 = u0 + 1 / cols, v1 = 1 - Math.floor(i / cols) / rows, v0 = v1 - 1 / rows;
+        const w = 1.25, h = 0.31, y = 2.75, ex = Math.sin(s.a), ez = Math.cos(s.a);    // plate runs along its street, readable from both sides
+        for (const f of [1, -1]) { const nx = ez * f, nz = -ex * f, ox = nx * 0.035, oz = nz * 0.035, sx = -ex * f, sz = -ez * f;
+          const A = [s.x - sx * w / 2 + ox, y - h / 2, s.z - sz * w / 2 + oz], Bq = [s.x + sx * w / 2 + ox, y - h / 2, s.z + sz * w / 2 + oz], C = [s.x + sx * w / 2 + ox, y + h / 2, s.z + sz * w / 2 + oz], Dq = [s.x - sx * w / 2 + ox, y + h / 2, s.z - sz * w / 2 + oz];
+          for (const [P, U] of [[A, [u0, v0]], [Bq, [u1, v0]], [C, [u1, v1]], [A, [u0, v0]], [C, [u1, v1]], [Dq, [u0, v1]]]) { pos.push(...P); uv.push(...U); nor.push(nx, 0, nz); } } }
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); g.computeBoundingSphere();
+      root.add(new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map: atlas, roughness: 0.5, side: THREE.DoubleSide }))); }
+    count('streetSigns', streetSigns.length); }
 
   // ---------- plaques "Bl. X · Sc. A" next to each entrance: one atlas, one merged mesh
   if (plaques.length) {
-    const cols = 8, cw = 256, chh = 64, rows = Math.ceil(Math.min(plaques.length, 512) / cols);
-    const atlas = canvasTex(cols * cw, rows * chh, (g) => { plaques.slice(0, 512).forEach((p, i) => { const x = (i % cols) * cw, y = Math.floor(i / cols) * chh;
-      g.fillStyle = '#1d4f91'; g.fillRect(x + 2, y + 2, cw - 4, chh - 4); g.strokeStyle = '#fff'; g.lineWidth = 3; g.strokeRect(x + 7, y + 7, cw - 14, chh - 14);
-      g.fillStyle = '#fff'; g.font = 'bold 30px Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(p.text, x + cw / 2, y + chh / 2 + 2, cw - 24); }); });
+    plaques.sort((p, q) => Math.hypot(p.x, p.z) - Math.hypot(q.x, q.z));   // the nearest 768 to the centre (atlas size on phones)
+    const MAXP = 768, cols = 16, cw = 160, chh = 40, rows = Math.ceil(Math.min(plaques.length, MAXP) / cols);
+    const atlas = canvasTex(cols * cw, rows * chh, (g) => { plaques.slice(0, MAXP).forEach((p, i) => { const x = (i % cols) * cw, y = Math.floor(i / cols) * chh;
+      g.fillStyle = '#1d4f91'; g.fillRect(x + 1, y + 1, cw - 2, chh - 2); g.strokeStyle = '#fff'; g.lineWidth = 2; g.strokeRect(x + 4, y + 4, cw - 8, chh - 8);
+      g.fillStyle = '#fff'; g.font = 'bold 19px Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(p.text, x + cw / 2, y + chh / 2 + 1, cw - 14); }); });
     const pos = [], uv = [], nor = [];
-    plaques.slice(0, 512).forEach((p, i) => { const u0 = (i % cols) / cols, u1 = u0 + 1 / cols, v1 = 1 - Math.floor(i / cols) / rows, v0 = v1 - 1 / rows;
+    plaques.slice(0, MAXP).forEach((p, i) => { const u0 = (i % cols) / cols, u1 = u0 + 1 / cols, v1 = 1 - Math.floor(i / cols) / rows, v0 = v1 - 1 / rows;
       const w = 0.9, h = 0.225, y = 2.1, c = Math.cos(p.a), s = Math.sin(p.a), ex = c, ez = -s;   // along the wall
       const nx = Math.sin(p.a), nz = Math.cos(p.a);
       const A = [p.x - ex * w / 2, y - h / 2, p.z - ez * w / 2], Bq = [p.x + ex * w / 2, y - h / 2, p.z + ez * w / 2], C = [p.x + ex * w / 2, y + h / 2, p.z + ez * w / 2], Dq = [p.x - ex * w / 2, y + h / 2, p.z - ez * w / 2];
       for (const [P, U] of [[A, [u0, v0]], [Bq, [u1, v0]], [C, [u1, v1]], [A, [u0, v0]], [C, [u1, v1]], [Dq, [u0, v1]]]) { pos.push(...P); uv.push(...U); nor.push(nx, 0, nz); } });
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); g.computeBoundingSphere();
     root.add(new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map: atlas, roughness: 0.6, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2 })));
-    count('plaques', Math.min(512, plaques.length));
+    count('plaques', Math.min(MAXP, plaques.length));
   }
 
   B.finish(root); BM.finish(root); BS.finish(root); BF.finish(root); BN.finish(root);
@@ -395,5 +549,5 @@ export function buildDetails(W, opts = {}) {
   const cull = (cam) => { for (const [m, bs, d] of cullList) m.visible = Math.hypot(bs.center.x - cam.x, bs.center.z - cam.z) - bs.radius < d; };
   // hide small clutter far away: detail meshes get a shorter draw distance via their own layer of culling (bounding spheres per 200 m chunk)
   console.log('[details]', JSON.stringify(stats), JSON.stringify(Object.fromEntries(Object.entries(TRI).map(([k, v]) => [k, Math.round(v)]).sort((a, b) => b[1] - a[1]))));
-  return { metroOut, stats, cull };
+  return { metroOut, stats, cull, streetSigns, signals: signalsOut, tramStops: tramStopsOut };
 }
