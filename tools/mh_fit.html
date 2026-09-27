@@ -1,0 +1,160 @@
+<!doctype html><meta charset="utf-8"><title>mh fit</title>
+<!-- Step 2 of the Câmpi body pipeline (step 1: tools/mh_body.py). Open via the local server with ?src=<morphed json url>.
+     Fits the X-bot (Mixamo) skeleton to the MakeHuman joints, transfers skin weights from the X-bot surface,
+     assigns clothing regions and writes window.__out = { meta, bin(base64) } for tools/mh_fit.mjs to save. -->
+<script type="importmap">{ "imports": { "three": "../lib/three.module.min.js" } }</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from '../lib/addons/loaders/GLTFLoader.js';
+const qs = new URLSearchParams(location.search);
+const MH = await (await fetch(qs.get('src'))).json();
+const gltf = await new GLTFLoader().loadAsync('../assets/Xbot.glb');
+const root = gltf.scene; root.updateMatrixWorld(true);
+const surf = root.getObjectByName('Beta_Surface'), jmesh = root.getObjectByName('Beta_Joints');
+const B = n => root.getObjectByName('mixamorig' + n);
+const V3 = (a) => new THREE.Vector3(...a);
+
+// ---- 1. MakeHuman body, welded (one vertex per original MH vertex), scaled to the X-bot stature, feet on y=0
+const srcIdx = MH.src, nOut = MH.pos.length;
+const remap = new Map(), wpos = [];
+for (let i = 0; i < nOut; i++) { const s = srcIdx[i]; if (!remap.has(s)) { remap.set(s, wpos.length / 3); wpos.push(...MH.pos[i]); } }
+const vid = (i) => remap.get(srcIdx[i]);
+const tri = MH.tri.map(vid);
+const nv = wpos.length / 3;
+let y0 = 1e9, y1 = -1e9; for (let i = 0; i < nv; i++) { y0 = Math.min(y0, wpos[i * 3 + 1]); y1 = Math.max(y1, wpos[i * 3 + 1]); }
+const xb = new THREE.Box3().setFromObject(surf, true);   // X-bot bind-pose bbox (world, meters)
+const S = (xb.max.y - xb.min.y) / (y1 - y0);
+const hipsW = B('Hips').getWorldPosition(new THREE.Vector3());
+const pel = MH.joints.pelvis;
+const toW = (p) => new THREE.Vector3((p[0] - pel[0]) * S + hipsW.x, (p[1] - y0) * S + xb.min.y, (p[2] - pel[2]) * S + hipsW.z);
+const P = new Float32Array(nv * 3); for (let i = 0; i < nv; i++) { const v = toW([wpos[i * 3], wpos[i * 3 + 1], wpos[i * 3 + 2]]); P[i * 3] = v.x; P[i * 3 + 1] = v.y; P[i * 3 + 2] = v.z; }
+const J = {}; for (const k in MH.joints) J[k] = toW(MH.joints[k]);
+
+// ---- 2. Fit the skeleton: Mixamo bone -> MakeHuman joint
+const MAP = { Hips: 'pelvis', Spine: 'spine-3', Spine1: 'spine-2', Spine2: 'spine-1', Neck: 'neck', Head: 'head', HeadTop_End: 'head-2' };
+const FING = ['Thumb', 'Index', 'Middle', 'Ring', 'Pinky'];
+for (const [s, m] of [['Left', 'l'], ['Right', 'r']]) {
+  Object.assign(MAP, { [s + 'Shoulder']: m + '-clavicle', [s + 'Arm']: m + '-shoulder', [s + 'ForeArm']: m + '-elbow', [s + 'Hand']: m + '-hand',
+    [s + 'UpLeg']: m + '-upper-leg', [s + 'Leg']: m + '-knee', [s + 'Foot']: m + '-ankle', [s + 'ToeBase']: m + '-foot-1', [s + 'Toe_End']: m + '-foot-2' });
+  FING.forEach((f, k) => { for (let j = 1; j <= 4; j++) MAP[s + 'Hand' + f + j] = `${m}-finger-${k + 1}-${j}`; });
+}
+const PRIMARY = { Hips: null, Spine2: 'Neck', LeftHand: 'LeftHandMiddle1', RightHand: 'RightHandMiddle1' };
+const nameOf = (b) => b.name.replace('mixamorig', '');
+const wp = (o) => o.getWorldPosition(new THREE.Vector3());
+const hipsOrigY = B('Hips').position.y;
+{ const h = B('Hips'); h.position.copy(h.parent.worldToLocal(J.pelvis.clone())); root.updateMatrixWorld(true); }
+function fit(bone) {
+  const kids = bone.children.filter(c => c.isBone && MAP[nameOf(c)] && J[MAP[nameOf(c)]]);
+  const n = nameOf(bone);
+  const prim = n in PRIMARY ? (PRIMARY[n] ? kids.find(c => nameOf(c) === PRIMARY[n]) : null) : (kids.length === 1 ? kids[0] : null);
+  if (prim) {   // swing the bone so its primary child points at the MH joint, then stretch the child offset to the MH length
+    const bw = wp(bone), cw = wp(prim), tgt = J[MAP[nameOf(prim)]];
+    const d0 = cw.clone().sub(bw), d1 = tgt.clone().sub(bw);
+    const q = new THREE.Quaternion().setFromUnitVectors(d0.clone().normalize(), d1.clone().normalize());
+    const bq = bone.getWorldQuaternion(new THREE.Quaternion()), pq = bone.parent.getWorldQuaternion(new THREE.Quaternion());
+    bone.quaternion.copy(pq.invert().multiply(q).multiply(bq));
+    prim.position.multiplyScalar(d1.length() / d0.length());
+    root.updateMatrixWorld(true);
+  }
+  for (const c of kids) if (c !== prim) { c.position.copy(bone.worldToLocal(J[MAP[nameOf(c)]].clone())); }
+  root.updateMatrixWorld(true);
+  for (const c of kids) fit(c);
+  // unmapped children (eyes, *_End without a joint) just follow
+}
+fit(B('Hips'));
+root.updateMatrixWorld(true);
+
+// ---- 3. X-bot surfaces deformed into the fitted pose -> weight donors
+const donors = [];
+for (const m of [surf, jmesh]) {
+  const g = m.geometry, pa = g.attributes.position, si = g.attributes.skinIndex, sw = g.attributes.skinWeight;
+  const bones = m.skeleton.bones, inv = m.skeleton.boneInverses;
+  const M = bones.map((b, i) => b.matrixWorld.clone().multiply(inv[i]).multiply(m.bindMatrix));
+  const v = new THREE.Vector3(), acc = new THREE.Vector3(), t = new THREE.Vector3();
+  for (let i = 0; i < pa.count; i++) {
+    v.fromBufferAttribute(pa, i); acc.set(0, 0, 0); const w = [], idx = [];
+    for (let k = 0; k < 4; k++) { const ww = sw.getComponent(i, k); if (ww <= 0) continue; const bi = si.getComponent(i, k); acc.add(t.copy(v).applyMatrix4(M[bi]).multiplyScalar(ww)); w.push(ww); idx.push(bi); }
+    donors.push({ p: acc.clone(), idx, w });
+  }
+}
+const boneList = surf.skeleton.bones, bname = boneList.map(nameOf);
+// spatial hash
+const CS = 0.04, grid = new Map(), key = (x, y, z) => `${Math.floor(x / CS)},${Math.floor(y / CS)},${Math.floor(z / CS)}`;
+donors.forEach((d, i) => { const k = key(d.p.x, d.p.y, d.p.z); if (!grid.has(k)) grid.set(k, []); grid.get(k).push(i); });
+const W = new Array(nv);
+const side = (x) => x > hipsW.x + 0.005 ? 1 : x < hipsW.x - 0.005 ? -1 : 0;   // keep left/right limbs from stealing each other's weights
+for (let i = 0; i < nv; i++) {
+  const x = P[i * 3], y = P[i * 3 + 1], z = P[i * 3 + 2];
+  let found = [];
+  for (let r = 1; r <= 6 && found.length < 6; r++) { found = [];
+    const cx = Math.floor(x / CS), cy = Math.floor(y / CS), cz = Math.floor(z / CS);
+    for (let a = -r; a <= r; a++) for (let b = -r; b <= r; b++) for (let c = -r; c <= r; c++) { const L = grid.get(`${cx + a},${cy + b},${cz + c}`); if (L) for (const j of L) found.push(j); } }
+  const cand = found.map(j => { const d = donors[j]; return { j, d2: (d.p.x - x) ** 2 + (d.p.y - y) ** 2 + (d.p.z - z) ** 2 }; }).sort((a, b) => a.d2 - b.d2).slice(0, 8);
+  const acc = {};
+  for (const { j, d2 } of cand) { const d = donors[j], f = 1 / (d2 + 1e-5);
+    d.idx.forEach((bi, k) => { const nm = bname[bi]; const sd = /^Left/.test(nm) ? 1 : /^Right/.test(nm) ? -1 : 0; if (sd && side(x) && sd !== side(x)) return; acc[bi] = (acc[bi] || 0) + d.w[k] * f; }); }
+  W[i] = acc;
+}
+// smooth over the mesh (2 passes) so joints bend without creases
+const adj = Array.from({ length: nv }, () => new Set());
+for (let t = 0; t < tri.length; t += 3) for (let a = 0; a < 3; a++) { adj[tri[t + a]].add(tri[t + (a + 1) % 3]); adj[tri[t + a]].add(tri[t + (a + 2) % 3]); }
+const norm = (o) => { let s = 0; for (const k in o) s += o[k]; for (const k in o) o[k] /= s || 1; return o; };
+W.forEach(norm);
+for (let pass = 0; pass < 2; pass++) {
+  const N = W.map((w, i) => { const o = {}; for (const k in w) o[k] = w[k] * 2; for (const j of adj[i]) for (const k in W[j]) o[k] = (o[k] || 0) + W[j][k] / adj[i].size * 2; return norm(o); });
+  for (let i = 0; i < nv; i++) W[i] = N[i];
+}
+const SI = new Uint16Array(nv * 4), SW = new Uint8Array(nv * 4), dom = new Array(nv), headW = new Float32Array(nv);
+for (let i = 0; i < nv; i++) {
+  const top = Object.entries(W[i]).sort((a, b) => b[1] - a[1]).slice(0, 4); let s = 0; top.forEach(e => s += e[1]);
+  let q = top.map(e => Math.round(e[1] / s * 255)); q[0] += 255 - q.reduce((a, b) => a + b, 0);
+  top.forEach((e, k) => { SI[i * 4 + k] = +e[0]; SW[i * 4 + k] = q[k]; });
+  dom[i] = bname[+top[0][0]]; headW[i] = (W[i][bname.indexOf('Head')] || 0) + (W[i][bname.indexOf('HeadTop_End')] || 0);
+}
+
+// ---- 4. clothing regions (0 shirt, 1 hem, 2 pants, 3 seam, 4 belt, 5 buckle, 6 skin, 7 shoe, 8 sole, 9 lace) + head cut
+const H = xb.max.y - xb.min.y, gy = xb.min.y;
+const beltY = J.pelvis.y + (J['spine-3'].y - J.pelvis.y) * 0.55;
+const along = (i, a, b) => { const A = J[a], Bp = J[b], d = Bp.clone().sub(A); return new THREE.Vector3(P[i * 3], P[i * 3 + 1], P[i * 3 + 2]).sub(A).dot(d) / d.lengthSq(); };
+const REG = new Uint8Array(nv), keep = new Uint8Array(nv);
+for (let i = 0; i < nv; i++) {
+  const d = dom[i], y = P[i * 3 + 1], h = (y - gy) / H, sd = P[i * 3] > hipsW.x ? 'l' : 'r';
+  let r;
+  if (headW[i] > 0.5 && y > J.neck.y + 0.03) r = 255;
+  else if (/Foot|Toe/.test(d) || y < J[sd + '-ankle'].y + 0.035) r = h < 0.016 ? 8 : 7;
+  else if (/Hand|ForeArm/.test(d)) r = 6;
+  else if (/Arm$/.test(d)) { const t = along(i, sd + '-shoulder', sd + '-elbow'); r = t > 0.5 ? 6 : t > 0.44 ? 1 : 0; }
+  else if (/Neck|Head/.test(d)) r = y > J.neck.y - 0.035 ? 6 : 0;
+  else if (y < beltY - 0.02) r = 2;
+  else if (y < beltY + 0.02) r = 4;
+  else r = y < beltY + 0.045 ? 1 : 0;
+  REG[i] = r; keep[i] = r !== 255;
+}
+// seam line on jeans, buckle, laces
+for (let i = 0; i < nv; i++) {
+  const x = P[i * 3] - hipsW.x, z = P[i * 3 + 2] - hipsW.z;
+  if (REG[i] === 4 && Math.abs(x) < 0.022 && z > 0) REG[i] = 5;
+}
+// ---- 5. pack: welded mesh without the head, int16 positions
+const newId = new Int32Array(nv).fill(-1); let m = 0; for (let i = 0; i < nv; i++) if (keep[i]) newId[i] = m++;
+const idx = []; for (let t = 0; t < tri.length; t += 3) { const a = tri[t], b = tri[t + 1], c = tri[t + 2]; if (keep[a] && keep[b] && keep[c]) idx.push(newId[a], newId[b], newId[c]); }
+const box = new THREE.Box3(); for (let i = 0; i < nv; i++) if (keep[i]) box.expandByPoint(new THREE.Vector3(P[i * 3], P[i * 3 + 1], P[i * 3 + 2]));
+const qP = new Int16Array(m * 3), oSI = new Uint16Array(m * 4), oSW = new Uint8Array(m * 4), oR = new Uint8Array(m);
+const mn = box.min.toArray(), ext = box.max.clone().sub(box.min).toArray();
+for (let i = 0; i < nv; i++) { const k = newId[i]; if (k < 0) continue;
+  for (let a = 0; a < 3; a++) qP[k * 3 + a] = Math.round((P[i * 3 + a] - mn[a]) / ext[a] * 65534 - 32767);
+  for (let a = 0; a < 4; a++) { oSI[k * 4 + a] = SI[i * 4 + a]; oSW[k * 4 + a] = SW[i * 4 + a]; } oR[k] = REG[i]; }
+const oIdx = new Uint16Array(idx);
+const parts = [qP, oSI, oSW, oR, oIdx];
+const bones = {}; for (const b of boneList) bones[nameOf(b)] = { p: b.position.toArray().map(v => +v.toFixed(5)), q: b.quaternion.toArray().map(v => +v.toFixed(6)) };
+const hipsRest = B('Hips').position.y;
+const meta = { v: 1, nv: m, ntri: idx.length / 3, min: mn, ext, bones, hipsScale: hipsRest / hipsOrigY,
+  source: 'MakeHuman hm08 base mesh + macro targets (CC0, github.com/makehumancommunity/makehuman)', params: MH.params,
+  layout: ['pos int16*3', 'skinIndex u16*4', 'skinWeight u8*4', 'region u8', 'index u16*3'] };
+let total = 0; for (const p of parts) total += Math.ceil(p.byteLength / 4) * 4;
+const buf = new Uint8Array(total); let off = 0; meta.offsets = [];
+for (const p of parts) { meta.offsets.push(off); buf.set(new Uint8Array(p.buffer, p.byteOffset, p.byteLength), off); off += Math.ceil(p.byteLength / 4) * 4; }
+let s = ''; for (let i = 0; i < buf.length; i += 32768) s += String.fromCharCode.apply(null, buf.subarray(i, i + 32768));
+window.__out = { meta, bin: btoa(s) };
+document.title = 'done ' + m + ' verts';
+</script>

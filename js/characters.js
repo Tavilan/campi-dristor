@@ -330,9 +330,82 @@ async function makeCampiRealBody() {
   const headBone = root.getObjectByName('mixamorigHead'), neck = root.getObjectByName('mixamorigNeck');
   return { root, mesh: surf, mixer, actions, headBone, neck, setWalk(v, dt) { const wW = Math.min(1, v / 1.1); actions.idle.setEffectiveWeight(1 - wW); actions.walk.setEffectiveWeight(wW); actions.run.setEffectiveWeight(0); actions.walk.timeScale = Math.max(0.6, v / 1.4); mixer.update(dt); } };
 }
-// Câmpi: muscular body on the rig, his real 3D face mounted on the head bone
+// Câmpi v3: anatomically modelled body from MakeHuman (CC0 base mesh + macro targets, tools/mh_body.py → tools/mh_fit.html).
+// The X-bot skeleton is refitted to the MakeHuman joints (bone lengths only; animations keep their rotations),
+// skin weights were transferred from the X-bot. Clothes are painted per region + a slight push along the normal.
+async function makeCampiMHBody() {
+  const [meta, buf] = await Promise.all([fetch('assets/campi_mh.json').then(r => r.json()), fetch('assets/campi_mh.bin').then(r => { if (!r.ok) throw new Error('campi_mh'); return r.arrayBuffer(); })]);
+  const rig = await loadRig();
+  const root = rig.SU.clone(rig.gltf.scene);
+  const surf = root.getObjectByName('Beta_Surface');
+  root.traverse(o => { if (o.isSkinnedMesh) o.visible = false; });
+  const bones = surf.skeleton.bones;
+  for (const b of bones) { const f = meta.bones[b.name.replace('mixamorig', '')]; if (f) { b.position.fromArray(f.p); b.quaternion.fromArray(f.q); } }
+  root.position.set(0, 0, 0); root.quaternion.identity(); root.scale.setScalar(1); root.updateMatrixWorld(true);
+  const n = meta.nv, o = meta.offsets;
+  const qP = new Int16Array(buf, o[0], n * 3), SI = new Uint16Array(buf, o[1], n * 4), SW = new Uint8Array(buf, o[2], n * 4), R = new Uint8Array(buf, o[3], n), I = new Uint16Array(buf, o[4], meta.ntri * 3);
+  const pos = new Float32Array(n * 3); for (let i = 0; i < n * 3; i++) { const a = i % 3; pos[i] = meta.min[a] + (qP[i] + 32767) / 65534 * meta.ext[a]; }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setIndex(new THREE.BufferAttribute(I, 1)); g.computeVertexNormals();
+  // clothes: push shirt / jeans / shoes slightly out along the normal (metres)
+  const PUSH = [0.021, 0.03, 0.024, 0.024, 0.026, 0.027, 0, 0.028, 0.03, 0.028], N = g.attributes.normal.array;
+  const bpos = pos.slice();
+  let push = Float32Array.from(R, r => PUSH[r] || 0);
+  { const nb = Array.from({ length: n }, () => []); for (let t = 0; t < I.length; t += 3) for (let j = 0; j < 3; j++) nb[I[t + j]].push(I[t + (j + 1) % 3], I[t + (j + 2) % 3]);
+    for (let pass = 0; pass < 4; pass++) push = push.map((v, i) => { if (R[i] === 6) return v * 0.5; let s = v * 2, c = 2; for (const j of nb[i]) { s += push[j]; c++; } return s / c; }); }
+  for (let i = 0; i < n; i++) { const d = push[i]; pos[i * 3] += N[i * 3] * d; pos[i * 3 + 1] += N[i * 3 + 1] * d; pos[i * 3 + 2] += N[i * 3 + 2] * d; }
+  g.computeVertexNormals();
+  // Clothing lines are drawn per pixel (crisp hem / belt / sleeve / shoe edges) from continuous per-vertex coordinates:
+  // cz.x = bind height (torso + legs), cz.y = position along the upper arm (0 shoulder .. 1 elbow), cz.z = 1 for arm vertices.
+  const wpB = (nm) => root.getObjectByName('mixamorig' + nm).getWorldPosition(new THREE.Vector3());
+  const hipsY = wpB('Hips').y, spY = wpB('Spine').y, neckY = wpB('Neck').y, ankY = (wpB('LeftFoot').y + wpB('RightFoot').y) / 2;
+  const beltY = hipsY + (spY - hipsY) * 0.55;
+  const armA = { L: [wpB('LeftArm'), wpB('LeftForeArm')], R: [wpB('RightArm'), wpB('RightForeArm')] };
+  const names = bones.map(b => b.name.replace('mixamorig', ''));
+  const cz = new Float32Array(n * 3), v = new THREE.Vector3();
+  for (let i = 0; i < n; i++) {
+    let bi = SI[i * 4], bw = SW[i * 4]; for (let k = 1; k < 4; k++) if (SW[i * 4 + k] > bw) { bw = SW[i * 4 + k]; bi = SI[i * 4 + k]; }
+    const nm = names[bi] || '', arm = /Arm$|ForeArm|Hand/.test(nm) && !/Shoulder/.test(nm);
+    v.set(bpos[i * 3], bpos[i * 3 + 1], bpos[i * 3 + 2]);
+    const [A, Bq] = armA[nm.startsWith('Left') ? 'L' : 'R'], d = Bq.clone().sub(A);
+    cz[i * 3] = v.y; cz[i * 3 + 1] = /ForeArm|Hand/.test(nm) ? 2 : v.clone().sub(A).dot(d) / d.lengthSq(); cz[i * 3 + 2] = arm ? 1 : 0;
+  }
+  g.setAttribute('cz', new THREE.BufferAttribute(cz, 3));
+  const sw = new Float32Array(n * 4); for (let i = 0; i < n * 4; i++) sw[i] = SW[i] / 255;
+  g.setAttribute('skinIndex', new THREE.BufferAttribute(new Uint16Array(SI), 4)); g.setAttribute('skinWeight', new THREE.BufferAttribute(sw, 4));
+  const U = { cShirt: new THREE.Color('#f2c318'), cHem: new THREE.Color('#d6a70c'), cPants: new THREE.Color('#27324f'), cBelt: new THREE.Color('#2a1f18'), cSkin: new THREE.Color('#c99b80'), cShoe: new THREE.Color('#f2f2ef'), cSole: new THREE.Color('#8a8a8a'),
+    yNeck: neckY - 0.035, yHem: beltY + 0.035, yBelt: beltY + 0.012, yBeltLo: beltY - 0.022, yAnk: ankY + 0.035, ySole: 0.03 };
+  const bodyMat = new THREE.MeshStandardMaterial({ roughness: 0.74, metalness: 0 });
+  bodyMat.onBeforeCompile = (sh) => {
+    for (const k in U) sh.uniforms[k] = { value: U[k] };
+    sh.vertexShader = 'attribute vec3 cz;\nvarying vec3 vCz;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vCz = cz;');
+    sh.fragmentShader = 'varying vec3 vCz;\nuniform vec3 cShirt, cHem, cPants, cBelt, cSkin, cShoe, cSole;\nuniform float yNeck, yHem, yBelt, yBeltLo, yAnk, ySole;\n' +
+      sh.fragmentShader.replace('#include <color_fragment>', `
+        float y = vCz.x;
+        vec3 ct = y > yNeck ? cSkin : y > yHem ? cShirt : y > yBelt ? cHem : y > yBeltLo ? cBelt : y > yAnk ? cPants : y > ySole ? cShoe : cSole;
+        float t = vCz.y; vec3 ca = t > 0.5 ? cSkin : t > 0.43 ? cHem : cShirt;
+        diffuseColor.rgb = mix(ct, ca, clamp(vCz.z, 0.0, 1.0));
+        float stitch = y < yAnk + 0.012 && y > yAnk ? 0.82 : 1.0; diffuseColor.rgb *= stitch;`);
+  };
+  const mesh = new THREE.SkinnedMesh(g, bodyMat);
+  mesh.castShadow = true; mesh.frustumCulled = false;
+  root.add(mesh); mesh.updateMatrixWorld(true);
+  mesh.bind(new THREE.Skeleton(bones), new THREE.Matrix4());
+  // clips: keep rotations; drop per-bone translation tracks (they would restore X-bot bone lengths) except the hips, rescaled
+  const mixer = new THREE.AnimationMixer(root), actions = {};
+  for (const clip of rig.gltf.animations) {
+    const tracks = [];
+    for (const t of clip.tracks) { if (!/\.position$/.test(t.name)) { tracks.push(t); continue; }
+      if (t.name === 'mixamorigHips.position') { const c = t.clone(); for (let i = 0; i < c.values.length; i++) c.values[i] *= meta.hipsScale; tracks.push(c); } }
+    actions[clip.name.toLowerCase()] = mixer.clipAction(new THREE.AnimationClip(clip.name, clip.duration, tracks));
+  }
+  for (const k of ['idle', 'walk', 'run']) { actions[k].play(); actions[k].setEffectiveWeight(k === 'idle' ? 1 : 0); }
+  const headBone = root.getObjectByName('mixamorigHead'), neck = root.getObjectByName('mixamorigNeck');
+  return { root, mesh, mixer, actions, headBone, neck, mh: true, setWalk(v, dt) { const wW = Math.min(1, v / 1.1); actions.idle.setEffectiveWeight(1 - wW); actions.walk.setEffectiveWeight(wW); actions.run.setEffectiveWeight(0); actions.walk.timeScale = Math.max(0.6, v / 1.4); mixer.update(dt); } };
+}
+// Câmpi: body on the rig, his real 3D face mounted on the head bone
 export async function makeCampiBody() {
-  const c = await makeCampiRealBody();
+  let c; try { c = await makeCampiMHBody(); } catch (e) { console.warn('[campi] MH body failed, fallback', e); c = await makeCampiRealBody(); }
   c.headBone.scale.setScalar(0.0001);                     // (no mannequin head in our mesh anyway; keeps children hidden)
   const headMount = new THREE.Group(); c.neck.add(headMount);
   const headInner = new THREE.Group(); headInner.scale.setScalar(100); headMount.add(headInner);   // bones are in cm

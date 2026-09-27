@@ -16,7 +16,7 @@ for f in sorted(os.listdir(os.path.join(SRC, 'js'))):
     if not f.endswith('.js'): continue
     s = rd('js/' + f)
     if f == 'characters.js':
-        s = s.replace("fetch('assets/face.bin')", "fetch('assets/face-bin.wasm')").replace("loadAsync('assets/Xbot.glb')", "loadAsync('assets/Xbot.gltf.json')")
+        s = s.replace("fetch('assets/face.bin')", "fetch('assets/face-bin.wasm')").replace("loadAsync('assets/Xbot.glb')", "loadAsync('assets/Xbot.gltf.json')").replace("fetch('assets/campi_mh.bin')", "fetch('assets/campi_mh-bin.wasm')")
     if f == 'game.js':
         s = s.replace("'Eroare la încărcare: ' + e.message;", "'Eroare la încărcare: ' + e.message + ' ' + ((e.stack || '').split('\\n')[1] || '');")
     put('js/' + f, s)
@@ -28,7 +28,8 @@ for f in os.listdir(os.path.join(SRC, 'lib')):
 for f in ['face.json', 'face_tex.jpg', 'face-start.png', 'icon.png', 'splash-landscape.jpg', 'splash-portrait.jpg']:
     put('assets/' + f, rd('assets/' + f, True))
 put('assets/face-bin.wasm', rd('assets/face.bin', True))
-for f in ['js/map-manifest.json', 'assets/facades.json']:
+put('assets/campi_mh-bin.wasm', rd('assets/campi_mh.bin', True))
+for f in ['js/map-manifest.json', 'assets/facades.json', 'assets/campi_mh.json']:
     if os.path.exists(os.path.join(SRC, f)): put(f, rd(f))
 for root, _, files in os.walk(os.path.join(SRC, 'assets/voice')):
     for f in files:

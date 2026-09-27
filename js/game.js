@@ -613,7 +613,7 @@ async function setup() {
   if (market) { const l = labelSprite((market.n || 'PIAȚA').toUpperCase(), '#ffffff', 1.3); const c = centroid(market.pts); l.position.set(c[0], 7, c[1]); scene.add(l); }
   // --- Câmpi
   campiBody = await makeCampiBody(); campi = campiBody.root; scene.add(campi);
-  { const hp = new THREE.Group(); hp.position.set(0, 0.04, 0.035); campiBody.headInner.add(hp); campiHead = await makeCampiHead(hp, 0.185); }
+  { const hp = new THREE.Group(); hp.position.set(0, campiBody.mh ? 0.022 : 0.04, 0.035); campiBody.headInner.add(hp); campiHead = await makeCampiHead(hp, campiBody.mh ? 0.195 : 0.185); }
   // first playable frame: Câmpi faces Dristor 1 (metro + boulevard in view), his block and Tanti Geta's window beside him
   P.x = LOC.home[0]; P.z = LOC.home[1];
   { const mx = LOC.metro[0] - P.x, mz = LOC.metro[1] - P.z; P.yaw = Math.hypot(mx, mz) > 5 ? Math.atan2(mx, mz) : Math.atan2(wall.nx, wall.nz); }
