@@ -28,6 +28,8 @@ for f in os.listdir(os.path.join(SRC, 'lib')):
 for f in ['face.json', 'face_tex.jpg', 'face-start.png', 'icon.png', 'splash-landscape.jpg', 'splash-portrait.jpg']:
     put('assets/' + f, rd('assets/' + f, True))
 put('assets/face-bin.wasm', rd('assets/face.bin', True))
+for f in ['js/map-manifest.json', 'assets/facades.json']:
+    if os.path.exists(os.path.join(SRC, f)): put(f, rd(f))
 for root, _, files in os.walk(os.path.join(SRC, 'assets/voice')):
     for f in files:
         rel = os.path.relpath(os.path.join(root, f), SRC); put(rel, rd(rel, True))

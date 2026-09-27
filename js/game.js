@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { buildWorld, Collider, canvasTex, pick, rand, signMaterial, mergeGeos } from './world.js';
 import { buildDetails } from './details.js';
 import { makeHuman, simpleHead, makeCampiHead, makeCampiBody, makeRigCharacter, animateHuman, makeMooDeng, animateHippo, makeDog, animateDog, makeCar } from './characters.js';
-import { MISSIONS, NPC_DEFS, PED_LINES, DOG_BITES, CAR_HITS } from './content.js';
+import { MISSIONS, NPC_DEFS, PED_LINES, PED_TALKS, DOG_BITES, CAR_HITS } from './content.js';
 import { SPEAKERS, speakerKey } from './voices.js';
 import { lineId } from './slug.js';
 
@@ -22,6 +22,7 @@ const scene = new THREE.Scene();
 // ---------------- Time of day: golden-hour sunset (default) or night
 const QUALITY = (isTouch && (navigator.hardwareConcurrency || 4) <= 4) || /quality=low/.test(location.search) ? 'low' : 'high';
 const SKY = {
+  day: canvasTex(4, 512, (g, w, h) => { const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#2f6fc0'); gr.addColorStop(0.45, '#6fa6dc'); gr.addColorStop(0.62, '#b9d6ee'); gr.addColorStop(1, '#e2ecf2'); g.fillStyle = gr; g.fillRect(0, 0, w, h); }),
   sunset: canvasTex(4, 512, (g, w, h) => { const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#2b4a86'); gr.addColorStop(0.35, '#7b77b0'); gr.addColorStop(0.55, '#e8a07a'); gr.addColorStop(0.68, '#ffc98a'); gr.addColorStop(1, '#f3d2b0'); g.fillStyle = gr; g.fillRect(0, 0, w, h); }),
   night: canvasTex(256, 512, (g, w, h) => { const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#040814'); gr.addColorStop(0.55, '#101a36'); gr.addColorStop(0.7, '#2a2440'); gr.addColorStop(1, '#3a2c2a'); g.fillStyle = gr; g.fillRect(0, 0, w, h);
     for (let i = 0; i < 260; i++) { g.fillStyle = `rgba(255,255,255,${Math.random() * .8})`; g.fillRect(Math.random() * w, Math.random() * h * 0.55, 1, 1); } }),
@@ -74,17 +75,25 @@ const sun = new THREE.DirectionalLight('#ffb070', 2.8);
 const SUN_OFF = new THREE.Vector3(-110, 48, 60);           // low sun from the west = long shadows
 const nightLights = []; for (let i = 0; i < (QUALITY === 'low' ? 4 : 8); i++) { const l = new THREE.PointLight('#ffb45a', 0, 22, 1.6); scene.add(l); nightLights.push(l); }
 let NIGHT = false;
-function setTimeOfDay(night) {
-  NIGHT = night;
-  scene.background = night ? SKY.night : SKY.sunset;
-  scene.fog.color.set(night ? '#1a1a2a' : '#ebc9ae'); scene.fog.near = night ? 40 : 80; scene.fog.far = night ? 300 : 430;
-  hemi.color.set(night ? '#6d7fb8' : '#ffe2c4'); hemi.groundColor.set(night ? '#1b1820' : '#6a6070'); hemi.intensity = night ? 0.5 : 1.35;
-  sun.color.set(night ? '#8fa8ff' : '#ffb070'); sun.intensity = night ? 0.35 : 3.1; SUN_OFF.set(night ? 60 : -110, night ? 90 : 48, night ? -40 : 60);
-  renderer.toneMappingExposure = night ? 1.25 : 1.0;
+// three moods: bright day, golden sunset, night. The 🌙 button cycles them; they also advance by themselves every few minutes.
+let TOD = 'sunset', todAuto = 0;
+const TODS = {
+  day: { sky: 'day', fog: ['#cfe0ee', 100, 450], hemi: ['#ffffff', '#7a7466', 1.25], sun: ['#fff1dc', 3.0, [-55, 110, 45]], exp: 1.0, clouds: ['#ffffff', 0.9], icon: '🌅' },
+  sunset: { sky: 'sunset', fog: ['#ebc9ae', 80, 430], hemi: ['#ffe2c4', '#6a6070', 1.35], sun: ['#ffb070', 3.1, [-110, 48, 60]], exp: 1.0, clouds: ['#ffd9b8', 1], icon: '🌙' },
+  night: { sky: 'night', fog: ['#1a1a2a', 40, 300], hemi: ['#6d7fb8', '#1b1820', 0.5], sun: ['#8fa8ff', 0.35, [60, 90, -40]], exp: 1.25, clouds: ['#2a3050', 0.5], icon: '☀️' },
+};
+function setTimeOfDay(mode) {
+  if (mode === true) mode = 'night'; if (mode === false) mode = 'sunset';
+  const T2 = TODS[mode] || TODS.sunset, night = mode === 'night'; TOD = mode; NIGHT = night;
+  scene.background = SKY[T2.sky] || SKY.sunset;
+  scene.fog.color.set(T2.fog[0]); scene.fog.near = T2.fog[1]; scene.fog.far = T2.fog[2];
+  hemi.color.set(T2.hemi[0]); hemi.groundColor.set(T2.hemi[1]); hemi.intensity = T2.hemi[2];
+  sun.color.set(T2.sun[0]); sun.intensity = T2.sun[1]; SUN_OFF.set(...T2.sun[2]);
+  renderer.toneMappingExposure = T2.exp;
   SKYLINE.mat.map = night ? SKYLINE.tex.night : SKYLINE.tex.day; SKYLINE.mat.needsUpdate = true;
-  CLOUDS.mat.color.set(night ? '#2a3050' : '#ffd9b8'); CLOUDS.mat.opacity = night ? 0.5 : 1;
+  CLOUDS.mat.color.set(T2.clouds[0]); CLOUDS.mat.opacity = T2.clouds[1];
   if (W) W.setNight(night);
-  $('bNight') && ($('bNight').textContent = night ? '☀️' : '🌙');
+  $('bNight') && ($('bNight').textContent = T2.icon);
 }
 sun.castShadow = true; sun.shadow.mapSize.set(isTouch ? 1024 : 2048, isTouch ? 1024 : 2048);
 Object.assign(sun.shadow.camera, { left: -70, right: 70, top: 70, bottom: -70, near: 1, far: 320 }); sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.04;
@@ -98,18 +107,21 @@ let W = null; const npcs = []; const peds = []; const dogs = []; const cars = []
 const P = { x: 0, z: 0, y: 0, vy: 0, yaw: 0, speed: 0, run: true, ground: 0, hurt: 0, knock: new THREE.Vector2(), scooter: false, lean: 0 };
 let campi, campiHead, campiBody, mooDeng = null, beacon, targetMarker;
 const LOC = {};
-let DET = null, detLast = 0;
+let DET = null, detLast = 0; const PERF = { t0: performance.now() };   // load timings (ms), see window.__g.PERF
 
 // ---------------- Audio
 let actx = null, master = null, muted = false, ttsOn = true, roVoice = null, voiceBus = null, analyser = null, lipBuf = null, campiLines = {}, npcLines = {}, npcBus = null, npcSrc = null, npcTok = 0, lip = 0;
-const lineCache = {};
+const lineCache = {}; let duckUntil = 0;   // ambience/traffic duck while Câmpi talks
 const voices = {};
 function initAudio() {
   if (actx) return;
   actx = new (window.AudioContext || window.webkitAudioContext)();
   master = actx.createGain(); master.gain.value = 0.8; master.connect(actx.destination);
   voiceBus = actx.createGain(); analyser = actx.createAnalyser(); analyser.fftSize = 512; lipBuf = new Float32Array(512);
-  voiceBus.connect(analyser); voiceBus.connect(master);
+  voiceBus.connect(analyser);
+  // Câmpi's voice: compressed and boosted so it cuts through traffic and music
+  { const comp = actx.createDynamicsCompressor(); comp.threshold.value = -26; comp.knee.value = 8; comp.ratio.value = 4; comp.attack.value = 0.003; comp.release.value = 0.2;
+    const makeup = actx.createGain(); makeup.gain.value = 2.1; voiceBus.connect(comp).connect(makeup).connect(master); }
   npcBus = actx.createGain(); npcBus.gain.value = 1.25; npcBus.connect(master);
   fetch('assets/voice/npc/manifest.json').then(r => r.ok ? r.json() : {}).then(m => { npcLines = m; preloadSpeaker('geta'); }).catch(() => {});
   fetch('assets/voice/campi/manifest.json').then(r => r.ok ? r.json() : {}).then(m => { campiLines = m; for (const [id, f] of Object.entries(m)) preloadLine('assets/voice/campi/', id, f); }).catch(() => {});
@@ -127,7 +139,7 @@ async function campiSay(text) {
   if (f && actx) {
     if (actx.state !== 'running') actx.resume();
     const buf = await preloadLine('assets/voice/campi/', id, f);
-    if (buf) { playBuf(buf, { vol: 1.3, bus: voiceBus }); return buf.duration; }
+    if (buf) { playBuf(buf, { vol: 1.5, bus: voiceBus }); duckUntil = performance.now() + buf.duration * 1000 + 300; return buf.duration; }
   }
   babble(); return 0;
 }
@@ -137,7 +149,7 @@ function lipLevel() {
   const target = clamp(Math.sqrt(s / lipBuf.length) * 9, 0, 1); lip += (target - lip) * 0.5; return lip;
 }
 function voice(k, opts) { const v = voices[k]; if (v && v.length) playBuf(pick(v), opts); }
-function babble() { const v = voices.start?.[0]; if (!v) return; for (let i = 0; i < 3; i++) setTimeout(() => playBuf(v, { offset: rand(0, v.duration - 0.35), dur: 0.28, rate: rand(0.95, 1.15), vol: 0.9, bus: voiceBus }), i * 260); }
+function babble() { const v = voices.start?.[0]; if (!v) return; for (let i = 0; i < 3; i++) setTimeout(() => playBuf(v, { offset: rand(0, v.duration - 0.35), dur: 0.28, rate: rand(0.95, 1.15), vol: 1.4, bus: voiceBus }), i * 260); }
 function tone(f, d, type = 'square', vol = 0.15, to = null, when = 0) {
   if (!actx) return; const t = actx.currentTime + when, o = actx.createOscillator(), g = actx.createGain();
   o.type = type; o.frequency.setValueAtTime(f, t); if (to) o.frequency.exponentialRampToValueAtTime(to, t + d);
@@ -194,7 +206,7 @@ function updateEnvAudio(dt) {
   if (envT <= 0) { envT = 0.5;
     if (!bigRoadPts) { bigRoadPts = []; for (const r of W.roads) if (r.w >= 11) for (const p of r.pts) bigRoadPts.push(p); }
     let d = 1e9; for (const [x, z] of bigRoadPts) { const dd = (x - P.x) ** 2 + (z - P.z) ** 2; if (dd < d) d = dd; } d = Math.sqrt(d);
-    trafficGain.gain.setTargetAtTime(clamp(1 - d / 90, 0, 1) * (NIGHT ? 0.25 : 0.55), actx.currentTime, 0.4);
+    trafficGain.gain.setTargetAtTime(clamp(1 - d / 90, 0, 1) * (NIGHT ? 0.25 : 0.55) * (performance.now() < duckUntil ? 0.3 : 1), actx.currentTime, 0.15);
     onGrass = W.areas.some(a => (a.k === 'park' || a.k === 'grass' || a.k === 'pitch') && Math.abs(a.pts[0][0] - P.x) < 400 && Collider.inside(a.pts, P.x, P.z));
   }
   // footsteps synced to speed
@@ -249,7 +261,7 @@ async function speak(text, who) {
     speechSynthesis.speak(u);
   }
 }
-$('bNight').onclick = (e) => { e.stopPropagation(); setTimeOfDay(!NIGHT); };
+$('bNight').onclick = (e) => { e.stopPropagation(); todAuto = 0; setTimeOfDay({ day: 'sunset', sunset: 'night', night: 'day' }[TOD]); };
 $('bMute').onclick = (e) => { e.stopPropagation(); muted = !muted; if (master) master.gain.value = muted ? 0 : 0.8; $('bMute').textContent = muted ? '🔇' : '🔊'; if (muted) stopNpcVoice(); };
 $('bTTS').onclick = (e) => { e.stopPropagation(); ttsOn = !ttsOn; $('bTTS').style.opacity = ttsOn ? 1 : 0.4; toast(ttsOn ? (roVoice || Object.keys(npcLines).length ? 'Vocile NPC pornite' : 'Telefonul n-are voce în română instalată') : 'Vocile NPC oprite'); };
 
@@ -262,13 +274,14 @@ let phoneT = 0;
 function phone(from, text, ms = 7000) { SFX.ding(); $('phFrom').textContent = from; $('phText').textContent = text; $('phone').classList.remove('hidden'); clearTimeout(phoneT); phoneT = setTimeout(() => $('phone').classList.add('hidden'), ms); if (navigator.vibrate) navigator.vibrate([60, 60, 60]); }
 function updateHUD() {
   $('money').textContent = `💰 ${state.money} lei`; $('coinN').textContent = state.coins;
-  const m = MISSIONS[state.mission]; $('mission').innerHTML = m ? `<b>MISIUNE:</b> ${m.title}` : '';
+  const m = MISSIONS[state.mission]; $('mission').innerHTML = JOB ? `<b>LIVRARE:</b> ${JOB.label} · <b>${Math.max(0, Math.ceil(JOB.t))} s</b> · ${JOB.reward} lei` : m ? `<b>MISIUNE:</b> ${m.title}` : '';
   $('inv').innerHTML = Object.values(state.inv).map(v => `<div class="pill">${v}</div>`).join('') + (state.follower ? '<div class="pill">🦛 Moo Deng te urmează</div>' : '');
 }
 function money(d) { state.money = Math.max(0, state.money + d); updateHUD(); if (d > 0) { SFX.cash(); toast(`+${d} lei`); } else if (d < 0) toast(`${d} lei`); }
 
 // ---------------- Dialogue engine
 const dlg = { active: false, npc: null, resolve: null, typing: null };
+let JOB = null, jobHud = 0;   // current delivery side job (see startJob)
 function typeText(text) {
   return new Promise(res => {
     const el = $('dlgText'); el.textContent = ''; let i = 0; dlg.skip = false; dlg.typingDone = false;
@@ -299,7 +312,7 @@ function ctxFor(npc) {
     say: (w, t) => say(w, t), me: (t) => say('Câmpi', t, true), choose,
     money, give: (k, label) => { state.inv[k] = label; updateHUD(); SFX.ding(); toast('Ai primit: ' + label); },
     has: (k) => !!state.inv[k], take: (k) => { delete state.inv[k]; updateHUD(); },
-    setMission, slots: playSlots, sfx: (n) => SFX[n]?.(),
+    setMission, slots: playSlots, sfx: (n) => SFX[n]?.(), startJob, get onJob() { return !!JOB; },
     follow: () => { state.follower = true; updateHUD(); setTimeout(() => campiSay('Hai, Moo Deng, vino după mine!'), 600); bigmsg('MOO DENG E A TA!', '#ff9ecb'); },
     phoneLater: () => setTimeout(() => phone('Tanti Geta', 'Câmpi!!! Zice la știri că a scăpat hipopotamu\' ăla de pe internet, Moo Deng!! E în Parcul IOR, la lac!! Du-te, poate iei recompensă. Și adu-mi și mie o poză cu el.'), 3500),
   };
@@ -309,7 +322,8 @@ async function talkTo(npc) {
   dlg.active = true; dlg.npc = npc; $('bAct').classList.add('hidden'); $('btns').style.visibility = 'hidden'; $('mission').style.visibility = 'hidden';
   unlockAudio(); preloadSpeaker(speakerKey(npc.name));
   if (npc.obj && !npc.window) npc.yawTarget = Math.atan2(P.x - npc.x, P.z - npc.z);
-  try { if (npc.def) await npc.def.talk(ctxFor(npc)); else await say(npc.name, pick(PED_LINES)); }
+  try { if (npc.def) await npc.def.talk(ctxFor(npc)); else { const used = (state.pedSeen ||= []); let i = Math.floor(Math.random() * PED_TALKS.length), tries = 0; while (used.includes(i) && tries++ < 20) i = Math.floor(Math.random() * PED_TALKS.length); used.push(i); if (used.length > PED_TALKS.length - 3) used.splice(0, used.length - 3);
+    if (Math.random() < 0.8) await PED_TALKS[i](ctxFor(npc), npc.name || 'Trecător'); else await say(npc.name, pick(PED_LINES)); } }
   catch (e) { console.error(e); }
   $('dialog').classList.add('hidden'); dlg.active = false; dlg.npc = null; stopNpcVoice(); $('btns').style.visibility = ''; $('mission').style.visibility = '';
 }
@@ -371,18 +385,22 @@ let mdown = false, mx = 0, my = 0;
 canvas.addEventListener('mousedown', e => { mdown = true; mx = e.clientX; my = e.clientY; });
 addEventListener('mouseup', () => mdown = false);
 addEventListener('mousemove', e => { if (!mdown) return; camYaw -= (e.clientX - mx) * 0.005; camPitch = clamp(camPitch + (e.clientY - my) * 0.004, 0.05, 1.1); mx = e.clientX; my = e.clientY; lastLook = performance.now(); });
-addEventListener('wheel', e => { camDist = clamp(camDist + e.deltaY * 0.01, photoMode ? 1.5 : 3.5, photoMode ? 40 : 14); });
+addEventListener('wheel', e => { camDist = clamp(camDist + e.deltaY * 0.01, photoMode ? 1.2 : 1.3, photoMode ? 40 : 14); });
 // ---------------- Photo mode: free orbit camera, HUD hidden, snapshot with a watermark (share / long-press to save)
 let photoMode = false, captureNext = false, pinch = null, lastShot = null;
-function setPhoto(on) { photoMode = on; document.body.classList.toggle('photo', on); $('photo').classList.toggle('hidden', !on); if (!on) camDist = clamp(camDist, 3.5, 14); lastLook = performance.now() + (on ? 1e9 : 0); }
+function setPhoto(on) { photoMode = on; document.body.classList.toggle('photo', on); $('photo').classList.toggle('hidden', !on); if (!on) camDist = clamp(camDist, 1.3, 14); lastLook = performance.now() + (on ? 1e9 : 0); }
 $('bPhoto').onclick = (e) => { e.stopPropagation(); setPhoto(true); };
+// zoom presets: normal → over-the-shoulder → face close-up (pinch / mouse wheel work too)
+const ZOOMS = [5.8, 2.6, 1.4]; const cycleZoom = () => { const i = ZOOMS.findIndex(z => Math.abs(z - camDist) < 0.3); camDist = ZOOMS[(i + 1) % ZOOMS.length]; if (camDist < 2) { camYaw = P.yaw; camPitch = 0.12; lastLook = performance.now() + 4000; } };
+$('bZoom').onclick = (e) => { e.stopPropagation(); cycleZoom(); };
+addEventListener('keydown', e => { if ((e.key === 'z' || e.key === 'Z') && !photoMode) cycleZoom(); });
 $('phExit').onclick = () => setPhoto(false);
 $('phShot').onclick = () => { captureNext = true; SFX.ding && SFX.ding(); };
 $('phClose').onclick = () => $('photoRes').classList.add('hidden');
 $('phShare').onclick = async () => { if (!lastShot) return; const file = new File([lastShot], 'campi-in-dristor.jpg', { type: 'image/jpeg' });
   try { if (navigator.canShare && navigator.canShare({ files: [file] })) await navigator.share({ files: [file], title: 'Câmpi în Dristor', text: 'Din Dristor, cu Câmpi 🦛 ' + location.href.split('#')[0] }); else { const a = document.createElement('a'); a.href = URL.createObjectURL(lastShot); a.download = 'campi-in-dristor.jpg'; a.click(); } } catch (e) {} };
 addEventListener('keydown', e => { if (e.key === 'p' || e.key === 'P') setPhoto(!photoMode); if (photoMode && e.key === ' ') { captureNext = true; e.preventDefault(); } });
-canvas.addEventListener('touchmove', e => { if (!photoMode || e.touches.length !== 2) { pinch = null; return; } const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY); if (pinch) camDist = clamp(camDist * pinch / d, 1.5, 40); pinch = d; }, { passive: true });
+canvas.addEventListener('touchmove', e => { if (e.touches.length !== 2 || joy.id !== null) { pinch = null; return; } const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY); if (pinch) camDist = clamp(camDist * pinch / d, photoMode ? 1.2 : 1.3, photoMode ? 40 : 14); pinch = d; }, { passive: true });
 function takePhoto() {
   const src = renderer.domElement, W2 = src.width, H2 = src.height, c = document.createElement('canvas'); c.width = W2; c.height = H2; const g = c.getContext('2d');
   g.drawImage(src, 0, 0); const k = Math.min(W2, H2) / 400;
@@ -459,6 +477,27 @@ function ridePose() {
   twoBoneIK(R.lu, R.ll, R.lfo, fl, fwd.clone().addScaledVector(up, 0.2).normalize());
   twoBoneIK(R.ru, R.rl, R.rfo, fr, fwd.clone().addScaledVector(up, 0.2).normalize());
 }
+// ---------------- Emote: the 6-7 hand gesture (palms up, hands going up and down in turns)
+let emoteT = 0, emoteBones = null;
+function startEmote() { if (dlg.active || P.scooter || emoteT > 0) return; emoteT = 3.2; voice('sixseven'); state.happy = 2;
+  const near = peds.filter(p => p.obj && Math.hypot(p.obj.position.x - P.x, p.obj.position.z - P.z) < 16);
+  if (near.length) setTimeout(() => toast(pick(['Un trecător: „SIX SEVEN!!” 🤌', 'Cineva te filmează. Ești viral.', 'Doi puști fac și ei 6-7 după tine.', 'O tanti își face cruce.'])), 900); }
+function emotePose(dt) {
+  if (emoteT <= 0) return; emoteT -= dt;
+  const g = (n) => campi.getObjectByName('mixamorig' + n);
+  if (!emoteBones) emoteBones = { la: g('LeftArm'), lf: g('LeftForeArm'), lh: g('LeftHand'), ra: g('RightArm'), rf: g('RightForeArm'), rh: g('RightHand') };
+  const R = emoteBones; if (!R.la) return; campi.updateMatrixWorld(true);
+  const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(campi.quaternion), side = new THREE.Vector3(1, 0, 0).applyQuaternion(campi.quaternion), up = new THREE.Vector3(0, 1, 0);
+  const lsh = R.la.getWorldPosition(new THREE.Vector3()), lSide = Math.sign(side.dot(lsh.clone().sub(campi.position))) || 1, s = campi.scale.y;
+  const ramp = Math.min(1, (3.2 - emoteT) * 4, emoteT * 4), w = Math.sin(performance.now() * 0.019) * 0.13 * ramp;
+  const base = campi.position.clone().addScaledVector(fwd, 0.36 * ramp + 0.05).addScaledVector(up, (0.62 + 0.38 * ramp) * s);
+  twoBoneIK(R.la, R.lf, R.lh, base.clone().addScaledVector(side, lSide * 0.24).addScaledVector(up, w), side.clone().multiplyScalar(lSide).addScaledVector(up, -0.8).normalize());
+  twoBoneIK(R.ra, R.rf, R.rh, base.clone().addScaledVector(side, -lSide * 0.24).addScaledVector(up, -w), side.clone().multiplyScalar(-lSide).addScaledVector(up, -0.8).normalize());
+  // palms up
+  for (const hnd of [R.lh, R.rh]) hnd.rotateY(ramp * 1.2 * (hnd === R.lh ? 1 : -1));
+}
+$('bEmote').onclick = (e) => { e.stopPropagation(); startEmote(); };
+addEventListener('keydown', e => { if (e.key === 'g' || e.key === 'G') startEmote(); });
 function toggleScooter(on = !P.scooter) {
   if (dlg.active || state.finale) return;
   P.scooter = on; $('bScoot').classList.toggle('on', on);
@@ -498,17 +537,23 @@ async function setup() {
   // map2.txt = same data as map.json under a name the GitHub mobile uploader accepts; falls back to map.json
   // the map can also come split in small pieces (js/map-part-N.js, plain JSON text) - the GitHub mobile uploader rejects the big file
   let mapUrl = 'assets/map.json';
-  { const parts = [];
-    for (let i = 1; i <= 30; i++) { const r = await fetch(`js/map-part-${i}.js`, { cache: 'no-cache' }).catch(() => null); if (!r || !r.ok) break; parts.push(await r.text()); }
+  const tMap0 = performance.now();
+  { let parts = [];
+    // manifest (tiny, never cached) says how many parts and their content hash: fetch them all in parallel, cacheable by hash
+    const man = await fetch('js/map-manifest.json', { cache: 'no-cache' }).then(r => r.ok ? r.json() : null).catch(() => null);
+    if (man && man.n) parts = await Promise.all(Array.from({ length: man.n }, (_, i) => fetch(`js/map-part-${i + 1}.js?h=${man.v}`).then(r => r.ok ? r.text() : '')));
+    else for (let i = 1; i <= 30; i++) { const r = await fetch(`js/map-part-${i}.js`, { cache: 'no-cache' }).catch(() => null); if (!r || !r.ok) break; parts.push(await r.text()); }
     if (parts.length) { try { mapUrl = JSON.parse(parts.join('')); } catch (e) { console.warn('map parts incomplete', e); } }   // parsed object: no blob: URL (blocked in some hosts)
     if (mapUrl === 'assets/map.json' && await fetch('assets/map2.txt', { method: 'HEAD', cache: 'no-cache' }).then(r => r.ok).catch(() => false)) mapUrl = 'assets/map2.txt'; }
-  W = await buildWorld(scene, mapUrl, { quality: QUALITY });
+  const tWorld0 = performance.now(); PERF.map = Math.round(tWorld0 - tMap0);
+  const facades = await fetch('assets/facades.json', { cache: 'no-cache' }).then(r => r.ok ? r.json() : {}).catch(() => ({}));
+  W = await buildWorld(scene, mapUrl, { quality: QUALITY, facades: facades.buildings || {} }); PERF.world = Math.round(performance.now() - tWorld0);
   setTimeOfDay(false);
   const R = W.radius;
   // --- metro Dristor 1
   const metroP = nearestPoi(['subway'], [0, 0], { name: /Dristor 1/ }) || nearestPoi(['subway'], [0, 0]) || { x: 0, z: 0 };
   LOC.metro = walkable(metroP.x, metroP.z);
-  DET = buildDetails(W, { quality: QUALITY });
+  { const t = performance.now(); DET = buildDetails(W, { quality: QUALITY }); PERF.details = Math.round(performance.now() - t); }
   { const d1 = DET.metroOut.find(m => /Dristor 1/.test(m.name || '')); if (d1) LOC.metro = walkable(d1.x, d1.z); }
   for (const m of DET.metroOut) if (m.name && /Dristor/.test(m.name)) { const l = labelSprite(m.name.toUpperCase(), '#ffffff', 1.1); l.position.set(m.x, 5, m.z); scene.add(l); }
   // --- Câmpi's block: a named "Bl." building 70-260 m from the metro
@@ -569,8 +614,14 @@ async function setup() {
   // --- Câmpi
   campiBody = await makeCampiBody(); campi = campiBody.root; scene.add(campi);
   { const hp = new THREE.Group(); hp.position.set(0, 0.04, 0.035); campiBody.headInner.add(hp); campiHead = await makeCampiHead(hp, 0.185); }
-  P.x = LOC.home[0]; P.z = LOC.home[1]; P.yaw = Math.atan2(-wall.nx, -wall.nz);
-  camYaw = P.yaw + Math.PI;
+  // first playable frame: Câmpi faces Dristor 1 (metro + boulevard in view), his block and Tanti Geta's window beside him
+  P.x = LOC.home[0]; P.z = LOC.home[1];
+  { const mx = LOC.metro[0] - P.x, mz = LOC.metro[1] - P.z; P.yaw = Math.hypot(mx, mz) > 5 ? Math.atan2(mx, mz) : Math.atan2(wall.nx, wall.nz); }
+  camPitch = 0.2; camDist = 6.5;
+  { // pick the camera angle with a clear line of sight (no tree trunk or pole between camera and Câmpi)
+    const blocked = (off) => { const a = P.yaw + Math.PI + off; for (let t = 0.8; t <= camDist; t += 0.5) { const x = P.x + Math.sin(a) * t, z = P.z + Math.cos(a) * t;
+      if (W.collider.near(x, z).some(q => (q.data?.tree || q.data?.pole || q.data?.building !== undefined) && Math.hypot(q.box[0] / 2 + q.box[2] / 2 - x, q.box[1] / 2 + q.box[3] / 2 - z) < (q.data?.building !== undefined ? 0 : 1.3) || (q.data?.building !== undefined && Collider.inside(q.pts, x, z)))) return true; } return false; };
+    camYaw = P.yaw + Math.PI + ([0.35, -0.35, 0.6, -0.6, 0.15, -0.15, 0.9, -0.9, 0].find(o => !blocked(o)) ?? 0.35); }
   // --- traffic, pedestrians, stray dogs, collectibles
   spawnTraffic(); await spawnPeds(); spawnSleepingDogs(); spawnCoins(); spawnTram(); spawnPigeons();
   // --- mission beacon
@@ -806,6 +857,45 @@ function buildMinimap() {
   for (const b of W.buildings) { g.fillStyle = b.garage ? '#8e8a82' : '#6d6a70'; g.beginPath(); b.pts.forEach(([x, z], i) => i ? g.lineTo(tx(x), tx(z)) : g.moveTo(tx(x), tx(z))); g.fill(); }
   g.fillStyle = '#1b4f9c'; for (const p of W.pois.filter(p => p.k === 'subway')) { g.beginPath(); g.arc(tx(p.x), tx(p.z), 6, 0, 7); g.fill(); }
 }
+// 3D GPS: glowing chevrons on the ground along the next ~45 m of the route
+const CHEV = (() => { const sh = new THREE.Shape(); sh.moveTo(-0.55, -0.35); sh.lineTo(0, 0.25); sh.lineTo(0.55, -0.35); sh.lineTo(0.55, -0.05); sh.lineTo(0, 0.55); sh.lineTo(-0.55, -0.05); sh.closePath();
+  const g = new THREE.ShapeGeometry(sh); g.rotateX(-Math.PI / 2); const m = new THREE.InstancedMesh(g, new THREE.MeshBasicMaterial({ color: '#ffd23f', transparent: true, opacity: 0.85, depthWrite: false }), 14);
+  m.count = 0; m.frustumCulled = false; m.renderOrder = 3; scene.add(m); return m; })();
+function updateChevrons() {
+  const path = NAV.path; if (!path || !$('dialog').classList.contains('hidden')) { CHEV.count = 0; return; } const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), v = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1);
+  let acc = 0, next = 3, n = 0, t = performance.now() * 0.004;
+  for (let i = 0; i < path.length - 1 && n < 14; i++) { const [x1, z1] = path[i], [x2, z2] = path[i + 1], L = Math.hypot(x2 - x1, z2 - z1); if (L < 0.01) continue;
+    while (next <= acc + L && n < 14) { const u = (next - acc) / L, x = x1 + (x2 - x1) * u, z = z1 + (z2 - z1) * u; q.setFromAxisAngle(up, Math.atan2(x2 - x1, z2 - z1) + Math.PI);
+      const pulse = 0.85 + 0.25 * Math.max(0, Math.sin(t - n * 0.6)); CHEV.setMatrixAt(n++, m4.compose(v.set(x, 0.3, z), q, one.set(pulse, 1, pulse))); next += 3.4; }
+    acc += L; if (acc > 48) break; }
+  CHEV.count = n; CHEV.instanceMatrix.needsUpdate = true;
+}
+// ---------------- GPS: shortest route along streets and footpaths to the mission target, drawn on the minimap (GTA style)
+const NAV = { nodes: null, adj: null, grid: null, path: null, last: 0, lastFrom: null, lastTo: null };
+function buildNav() {
+  const key = (x, z) => Math.round(x / 2) + ',' + Math.round(z / 2), idx = new Map(), nodes = [], adj = [];
+  const id = (x, z) => { const k = key(x, z); let i = idx.get(k); if (i === undefined) { i = nodes.length; idx.set(k, i); nodes.push([x, z]); adj.push([]); } return i; };
+  for (const r of W.roads) { if (['steps', 'corridor'].includes(r.k)) continue; const pts = r.pts; let prev = id(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) { const [x1, z1] = pts[i - 1], [x2, z2] = pts[i], L = Math.hypot(x2 - x1, z2 - z1), n = Math.max(1, Math.ceil(L / 25));
+      for (let k = 1; k <= n; k++) { const cur = id(x1 + (x2 - x1) * k / n, z1 + (z2 - z1) * k / n); if (cur !== prev) { const d = L / n * (r.w >= 14 ? 1.15 : 1); adj[prev].push([cur, d]); adj[cur].push([prev, d]); } prev = cur; } } }
+  const grid = new Map(); nodes.forEach(([x, z], i) => { const k = Math.floor(x / 30) + ',' + Math.floor(z / 30); if (!grid.has(k)) grid.set(k, []); grid.get(k).push(i); });
+  Object.assign(NAV, { nodes, adj, grid });
+}
+function navNearest(x, z) { let best = -1, bd = 1e9; for (let r = 0; r <= 3 && best < 0; r++) for (let a = -r; a <= r; a++) for (let b = -r; b <= r; b++) { for (const i of NAV.grid.get((Math.floor(x / 30) + a) + ',' + (Math.floor(z / 30) + b)) || []) { const d = Math.hypot(NAV.nodes[i][0] - x, NAV.nodes[i][1] - z); if (d < bd) { bd = d; best = i; } } } return best; }
+function navRoute(from, to) {
+  if (!NAV.nodes) buildNav(); const s = navNearest(from[0], from[1]), t = navNearest(to[0], to[1]); if (s < 0 || t < 0) return null;
+  const N = NAV.nodes.length, dist = new Float64Array(N).fill(Infinity), prev = new Int32Array(N).fill(-1), heap = [[0, s]]; dist[s] = 0;
+  const push = (e) => { heap.push(e); let i = heap.length - 1; while (i > 0) { const p = (i - 1) >> 1; if (heap[p][0] <= heap[i][0]) break; [heap[p], heap[i]] = [heap[i], heap[p]]; i = p; } };
+  const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === i) break; [heap[m], heap[i]] = [heap[i], heap[m]]; i = m; } } return top; };
+  const [tx, tz] = NAV.nodes[t];
+  while (heap.length) { const [d, u] = pop(); if (u === t) break; if (d > dist[u]) continue; for (const [v, w] of NAV.adj[u]) { const nd = d + w; if (nd < dist[v]) { dist[v] = nd; prev[v] = u; push([nd + Math.hypot(NAV.nodes[v][0] - tx, NAV.nodes[v][1] - tz) * 0 , v]); } } }
+  if (prev[t] < 0 && s !== t) return null; const out = [to]; for (let u = t; u >= 0; u = prev[u]) out.push(NAV.nodes[u]); out.push(from); return out.reverse();
+}
+function updateNav(target) {
+  if (!target) { NAV.path = null; return; } const now = performance.now();
+  if (NAV.path && now - NAV.last < 1500 && NAV.lastTo && NAV.lastTo[0] === target[0] && NAV.lastTo[1] === target[1] && Math.hypot(P.x - NAV.lastFrom[0], P.z - NAV.lastFrom[1]) < 6) { NAV.path[0] = [P.x, P.z]; return; }
+  NAV.last = now; NAV.lastFrom = [P.x, P.z]; NAV.lastTo = target; NAV.path = Math.hypot(target[0] - P.x, target[1] - P.z) < 25 ? null : navRoute([P.x, P.z], target);
+}
 function drawMinimap(target) {
   // North-up minimap: the map never rotates; only the player arrow and the camera view cone turn.
   const c = $('minimap'), g = c.getContext('2d'), s = c.width, R = W.radius, k = 0.8; // k = minimap px per metre
@@ -814,6 +904,10 @@ function drawMinimap(target) {
   const src = (s / k) * mapScale, cx = (P.x + R) * mapScale, cz = (P.z + R) * mapScale;
   g.imageSmoothingEnabled = true;
   g.drawImage(mapCanvas, cx - src / 2, cz - src / 2, src, src, 0, 0, s, s);
+  // GPS route
+  updateNav(target);
+  if (NAV.path) { g.save(); g.lineJoin = g.lineCap = 'round'; g.beginPath(); NAV.path.forEach(([x, z], i) => { const px = s / 2 + (x - P.x) * k, pz = s / 2 + (z - P.z) * k; i ? g.lineTo(px, pz) : g.moveTo(px, pz); });
+    g.strokeStyle = 'rgba(27,20,32,.8)'; g.lineWidth = 7; g.stroke(); g.strokeStyle = '#ffd23f'; g.lineWidth = 4; g.stroke(); g.restore(); }
   // camera view cone (where the camera is looking)
   const look = Math.PI - (camYaw + Math.PI);
   g.translate(s / 2, s / 2); g.rotate(look);
@@ -836,6 +930,7 @@ function drawMinimap(target) {
 
 // ---------------- Mission target resolution
 function targetPos() {
+  if (JOB) return [JOB.x, JOB.z];
   const m = MISSIONS[state.mission]; if (!m || !m.target) return null;
   if (m.target === 'metrou') return LOC.metro;
   const ids = Array.isArray(m.target) ? m.target : [m.target];
@@ -844,6 +939,17 @@ function targetPos() {
   return best ? [best.window ? best.anchor.x : best.x, best.window ? best.anchor.z : best.z] : null;
 }
 
+// ---------------- Side jobs: deliveries for Nelu's shaorma place to real scara entrances, against the clock
+function startJob() {
+  const ents = (W.M.entrances || []).filter(e => e[3]).map(([x, z, k, ref]) => ({ x, z, ref })).filter(e => { const d = Math.hypot(e.x - P.x, e.z - P.z); return d > 140 && d < 520; });
+  if (!ents.length) return false; const e = ents[(Math.random() * ents.length) | 0], d = Math.hypot(e.x - P.x, e.z - P.z);
+  const [x, z] = walkable(e.x, e.z); JOB = { x, z, label: `🌯 Scara ${e.ref}`, t: Math.round(35 + d / 5.5), reward: Math.round(8 + d / 30) }; updateHUD(); SFX.ding(); return true;
+}
+function updateJob(dt) {
+  if (!JOB) return; JOB.t -= dt; if ((jobHud -= dt) <= 0) { jobHud = 0.5; updateHUD(); }
+  if (Math.hypot(P.x - JOB.x, P.z - JOB.z) < 3.5) { const tip = JOB.t > 20 ? Math.round(JOB.t / 10) : 0; const r = JOB.reward + tip; JOB = null; money(r); bigmsg('LIVRAT!', '#7dff9a'); if (tip) setTimeout(() => toast(`Bacșiș pentru viteză: ${tip} lei`), 1400); campiSay(pick(['Livrare! Poftă bună, șefu\'!', 'Shaorma caldă, ca la mama acasă!', 'Gata, am livrat. Cinci stele, da?'])); saveGame(); }
+  else if (JOB.t <= 0) { JOB = null; updateHUD(); SFX.lose(); toast('Prea târziu! Clientul a anulat comanda. Nelu nu e fericit.', 3000); }
+}
 // ---------------- Main loop
 const clock = new THREE.Clock(); let running = false, T = 0;
 const camTarget = new THREE.Vector3(), camPos = new THREE.Vector3();
@@ -885,7 +991,7 @@ function update(dt) {
     A.walk.timeScale = clamp(v / 1.9, 0.6, 1.6); A.run.timeScale = clamp(v / 6.5, 0.8, 1.4);
     campiBody.mixer.update(air ? dt * 0.2 : dt);
     campiBody.headMount.position.copy(campiBody.headBone.position); campiBody.headMount.quaternion.copy(campiBody.headBone.quaternion);
-    if (P.scooter) ridePose();
+    if (P.scooter) ridePose(); else emotePose(dt);
   }
   // face expression
   const talkingMe = dlg.talking === 'me' ? lipLevel() : 0;
@@ -956,7 +1062,7 @@ function update(dt) {
       P.knock.set(fx * 14, fz * 14); P.vy = 6; P.hurt = 1.2; state.hits++; SFX.hit(); campiSay(pick(['Au! Futu-i!', 'Bă, fii atent pe unde mergi!'])); flash(); money(-10); toast(pick(CAR_HITS), 2500); if (navigator.vibrate) navigator.vibrate(200);
     }
   }
-  updatePigeons(dt);
+  updatePigeons(dt); updateJob(dt);
   // ---- dogs
   for (const d of dogs) {
     const dx = P.x - d.x, dz = P.z - d.z, dist = Math.hypot(dx, dz);
@@ -994,7 +1100,7 @@ function update(dt) {
 
   // ---- camera
   if (!talking && performance.now() - lastLook > 1800 && P.speed > 1) camYaw = lerpAngle(camYaw, P.yaw + Math.PI, dt * 1.2);
-  camTarget.set(P.x, P.y + 1.7, P.z);
+  camTarget.set(P.x, P.y + 1.7 - Math.max(0, 3 - camDist) * 0.08, P.z);   // close-up: frame the face
   let dist = camDist + (P.scooter ? clamp(P.speed / 17, 0, 1) * 2.5 : 0);
   if (talking && dlg.npc) { // cinematic over-the-shoulder shots; Câmpi's lines show his face
     const n = dlg.npc, npos = n.obj && !n.window ? n.obj.position : null;
@@ -1014,7 +1120,7 @@ function update(dt) {
   // occlusion: pull camera in front of buildings
   for (let k = 1; k <= 10; k++) {
     const t = k / 10 * dist, x = camTarget.x + dx * t, z = camTarget.z + dz * t, y = camTarget.y + dy * t;
-    if (W.collider.near(x, z).some(p => p.data?.building !== undefined && y < p.data.h + 0.5 && Collider.inside(p.pts, x, z))) { dist = Math.max(2.2, t - 0.8); break; }
+    if (W.collider.near(x, z).some(p => p.data?.building !== undefined && y < p.data.h + 0.5 && Collider.inside(p.pts, x, z))) { dist = Math.max(Math.min(2.2, camDist), t - 0.8); break; }
   }
   camPos.set(camTarget.x + dx * dist, camTarget.y + dy * dist, camTarget.z + dz * dist);
   if (introT > 0) {   // establishing shot: a slow orbit high over Dristor 1 that swoops down behind Câmpi
@@ -1027,8 +1133,9 @@ function update(dt) {
   } else { camera.position.lerp(camPos, Math.min(1, dt * 10)); camera.lookAt(camTarget); }
   sun.position.set(P.x + SUN_OFF.x, SUN_OFF.y, P.z + SUN_OFF.z); sun.target.position.set(P.x, 0, P.z);
   // ---- minimap
-  drawMinimap(tgt);
+  drawMinimap(tgt); updateChevrons();
   updateEnvAudio(dt);
+  if ((todAuto += dt) > 300) { todAuto = 0; setTimeOfDay({ day: 'sunset', sunset: 'night', night: 'day' }[TOD]); toast(TOD === 'day' ? 'S-a făcut dimineață în Dristor.' : TOD === 'night' ? 'S-a lăsat noaptea peste blocuri.' : 'Apune soarele peste Titan.'); }
   // ---- night: move the pool of real point lights to the nearest street lamps
   if (NIGHT && W.lamps && (T - (state.lampT || 0) > 0.4)) { state.lampT = T;
     const near = W.lamps.map(l => [l, (l[0] - P.x) ** 2 + (l[1] - P.z) ** 2]).sort((a, b) => a[1] - b[1]);
@@ -1073,6 +1180,7 @@ function loop() {
 
 // ---------------- Boot
 setup().then(() => {
+  PERF.ready = Math.round(performance.now() - PERF.t0); console.log('[perf] load ms', JSON.stringify(PERF));
   $('loading').textContent = 'Gata. Alege o salvare.'; renderSaves(true);
   camera.position.set(P.x + 20, 30, P.z + 20); camera.lookAt(P.x, 0, P.z);
   loop();
@@ -1084,7 +1192,7 @@ function readSave(i) { try { const s = localStorage.getItem(SAVE_KEY(i)); return
 function snapshot() {
   const { money, inv, mission, flags, coins: nCoins, follower, bites, hits, spins, lastCoin, done } = state;
   return { v: 1, t: Date.now(), play: Math.round((performance.now() - state.t0) / 1000), state: { money, inv, mission, flags, coins: nCoins, follower, bites, hits, spins, lastCoin, done },
-    P: { x: +P.x.toFixed(2), z: +P.z.toFixed(2), yaw: +P.yaw.toFixed(3) }, night: NIGHT, coins: coins.map(c => c.got ? 1 : 0) };
+    P: { x: +P.x.toFixed(2), z: +P.z.toFixed(2), yaw: +P.yaw.toFixed(3) }, night: NIGHT, tod: TOD, coins: coins.map(c => c.got ? 1 : 0) };
 }
 function saveGame() { if (!slot || !running || state.finale) return; try { localStorage.setItem(SAVE_KEY(slot), JSON.stringify(snapshot())); } catch (e) { } }
 function applySave(d) {
@@ -1093,7 +1201,7 @@ function applySave(d) {
   (d.coins || []).forEach((g, i) => { const c = coins[i]; if (c && g) { c.got = true; c.obj.visible = false; } });
   if (state.follower) { const md = npcs.find(n => n.id === 'moodeng'); if (md) { md.x = P.x - Math.sin(P.yaw) * 2.6; md.z = P.z - Math.cos(P.yaw) * 2.6; } }
   if (state.mission === 'metrou') spawnDogs();
-  if (d.night) setTimeOfDay(true);
+  if (d.tod) setTimeOfDay(d.tod); else if (d.night) setTimeOfDay(true);
 }
 function fmtSave(d) {
   const m = MISSIONS[d.state.mission], date = new Date(d.t), mins = Math.floor((d.play || 0) / 60);
@@ -1129,4 +1237,4 @@ function startGame(i, d) {
 }
 addEventListener('pagehide', saveGame); document.addEventListener('visibilitychange', () => { if (document.hidden) saveGame(); });
 $('play').onclick = () => startGame(1, null);   // (kept for the automated tests)
-window.__g = { cars, PIG, tramInfo: () => tram && { stops: tram.stops.length, s: +tram.s.toFixed(1), v: +tram.v.toFixed(1), wait: +tram.wait.toFixed(1) }, setTimeOfDay: (n) => setTimeOfDay(n), shot(pos, at) { camOverride = pos ? { pos: new THREE.Vector3(...pos), at: new THREE.Vector3(...at) } : null; if (pos && DET) DET.cull(camOverride.pos); }, camPos, camTarget, setCam(y, p, d) { camYaw = y; camPitch = p; if (d) camDist = d; lastLook = performance.now() + 1e6; }, state, P, npcs, LOC, setMission, talkTo, get W() { return W; }, get DET() { return DET; }, get campi() { return campi; }, get mooDeng() { return mooDeng; }, toggleScooter: (v) => toggleScooter(v), camera, scene, renderer, update, input };
+window.__g = { PERF, targetPos: () => targetPos(), get emoteT() { return emoteT; }, startEmote: () => startEmote(), cars, PIG, tramInfo: () => tram && { stops: tram.stops.length, s: +tram.s.toFixed(1), v: +tram.v.toFixed(1), wait: +tram.wait.toFixed(1) }, setTimeOfDay: (n) => setTimeOfDay(n), shot(pos, at) { camOverride = pos ? { pos: new THREE.Vector3(...pos), at: new THREE.Vector3(...at) } : null; if (pos && DET) DET.cull(camOverride.pos); }, camPos, camTarget, setCam(y, p, d) { camYaw = y; camPitch = p; if (d) camDist = d; lastLook = performance.now() + 1e6; }, state, P, npcs, LOC, setMission, talkTo, get W() { return W; }, get DET() { return DET; }, get campi() { return campi; }, get mooDeng() { return mooDeng; }, toggleScooter: (v) => toggleScooter(v), camera, scene, renderer, update, input };

@@ -1,3 +1,6 @@
 .DS_Store
 *.m4a
 raw/
+
+# coordination notes between agents stay local
+team/

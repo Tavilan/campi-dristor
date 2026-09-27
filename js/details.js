@@ -219,7 +219,9 @@ export function buildDetails(W, opts = {}) {
     }
     // gardens go on the long side without doors
     const onEdge = (d, e) => { if (!e) return false; const t = (d.px - e.x1) * e.ex + (d.pz - e.z1) * e.ez; return t > -1 && t < e.L + 1 && Math.abs((d.px - e.x1) * e.nx + (d.pz - e.z1) * e.nz) < 1.5; };
-    const gs = doors.some(d => onEdge(d, back)) ? (doors.some(d => onEdge(d, front)) ? null : front) : back;
+    // ...and never on a side with shops on the ground floor (their doors and signs face that way)
+    const shopSide = (e) => e && W.pois.some(p => p.wall && Math.abs((p.x - e.x1) * e.nx + (p.z - e.z1) * e.nz) < 9 && (p.x - e.x1) * e.ex + (p.z - e.z1) * e.ez > -3 && (p.x - e.x1) * e.ex + (p.z - e.z1) * e.ez < e.L + 3);
+    let gs = doors.some(d => onEdge(d, back)) ? (doors.some(d => onEdge(d, front)) ? null : front) : back; if (shopSide(gs)) gs = null;
     // front gardens with low green fences on the gs side (ground-floor flats' little plots)
     const gDepth = gs ? 3 + hash(b.id) * 2.5 : 0;
     if (gs && gs.L > 14 && hash(b.id * 3.3) < 0.6 && [0, 0.5, 1].every(t => W.carriageDist(gs.x1 + (gs.x2 - gs.x1) * t + gs.nx * gDepth, gs.z1 + (gs.z2 - gs.z1) * t + gs.nz * gDepth) > 0.8)) {
@@ -448,7 +450,7 @@ export function buildDetails(W, opts = {}) {
     const willowG = new THREE.IcosahedronGeometry(1, 1); { const p = willowG.attributes.position; for (let i = 0; i < p.count; i++) { const y = p.getY(i); if (y < 0.2) { p.setX(i, p.getX(i) * 1.12); p.setZ(i, p.getZ(i) * 1.12); p.setY(i, y - 0.25); } } willowG.computeVertexNormals(); }
     const GEO = [ico, ico, ico, cone, cone, willowG, ico];
     const COLS = [TREEC, TREEC, ['#5d8a3b', '#6b8f3e', '#7a9a45', '#e6b8c8'], ['#2d4f2a', '#34572e', '#3c5f33', '#2a4a30'], ['#2f5a2a', '#3a6630', '#335c2c'], ['#8fae4a', '#9ab653', '#86a544'], ['#7fa347', '#8cb052', '#94b35a']];
-    const trunkM = new THREE.MeshStandardMaterial({ color: '#fff', roughness: 1 }), leafM = fadeNearCamera(new THREE.MeshStandardMaterial({ color: '#fff', roughness: 0.9, flatShading: true }));
+    const trunkM = fadeNearCamera(new THREE.MeshStandardMaterial({ color: '#fff', roughness: 1 }), 1.5, 4.5), leafM = fadeNearCamera(new THREE.MeshStandardMaterial({ color: '#fff', roughness: 0.9, flatShading: true }));
     const BARK = new THREE.Color('#6e5238'), BIRCH = new THREE.Color('#e8e4da');
     const groups = new Map();
     for (const t of trees) { const k = Math.floor(t[0] / 280) + ':' + Math.floor(t[1] / 280); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(t); collider.add([[t[0] - .3, t[1] - .3], [t[0] + .3, t[1] - .3], [t[0] + .3, t[1] + .3], [t[0] - .3, t[1] + .3]], { tree: true, h: 99 }); }

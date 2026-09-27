@@ -8,4 +8,6 @@ for i in range(N):
     open(f'js/map-part-{i + 1}.js', 'w', encoding='utf-8').write(s[i * step:(i + 1) * step])
 for i in range(N + 1, 31):
     if os.path.exists(f'js/map-part-{i}.js'): os.remove(f'js/map-part-{i}.js')
+import hashlib, json
+json.dump({'n': N, 'v': hashlib.md5(s.encode()).hexdigest()[:8]}, open('js/map-manifest.json', 'w'))
 print('split', len(s), 'into', N, 'parts of', step)

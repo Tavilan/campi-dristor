@@ -127,20 +127,59 @@ const SIGN = {
   default: ['MAGAZIN', 'MIXT', '#6d6d6d', '#fff'],
 };
 const signCache = {};
+// vector pictograms for shop signs (drawn in the sign's text colour inside a round badge)
+const ICON = {
+  cross: (g) => { g.fillRect(-0.18, -0.62, 0.36, 1.24); g.fillRect(-0.62, -0.18, 1.24, 0.36); },
+  kebab: (g) => { g.fillRect(-0.04, -0.8, 0.08, 1.6); g.beginPath(); g.moveTo(-0.42, -0.55); g.lineTo(0.42, -0.55); g.lineTo(0.22, 0.55); g.lineTo(-0.22, 0.55); g.closePath(); g.fill(); },
+  fork: (g) => { for (const x of [-0.5, -0.3, -0.1]) g.fillRect(x, -0.7, 0.08, 0.5); g.fillRect(-0.5, -0.25, 0.48, 0.1); g.fillRect(-0.3, -0.2, 0.1, 0.9); g.beginPath(); g.ellipse(0.35, -0.3, 0.15, 0.42, 0, 0, 7); g.fill(); g.fillRect(0.3, 0, 0.1, 0.7); },
+  cup: (g) => { g.fillRect(-0.45, -0.1, 0.7, 0.6); g.lineWidth = 0.1; g.beginPath(); g.arc(0.3, 0.2, 0.18, -1.5, 1.5); g.stroke(); g.fillRect(-0.55, 0.52, 0.9, 0.08); for (const x of [-0.25, 0, 0.2]) { g.beginPath(); g.moveTo(x, -0.25); g.bezierCurveTo(x - 0.1, -0.4, x + 0.1, -0.5, x, -0.7); g.stroke(); } },
+  beer: (g) => { g.fillRect(-0.4, -0.35, 0.6, 0.95); g.beginPath(); g.arc(-0.25, -0.4, 0.2, 0, 7); g.arc(0, -0.45, 0.22, 0, 7); g.arc(0.12, -0.35, 0.15, 0, 7); g.fill(); g.lineWidth = 0.1; g.strokeRect(0.2, -0.15, 0.25, 0.45); },
+  pretzel: (g) => { g.lineWidth = 0.16; g.beginPath(); g.moveTo(-0.5, 0.45); g.bezierCurveTo(-0.9, -0.2, -0.3, -0.75, 0, -0.1); g.bezierCurveTo(0.3, -0.75, 0.9, -0.2, 0.5, 0.45); g.moveTo(-0.5, 0.45); g.lineTo(0.35, -0.2); g.moveTo(0.5, 0.45); g.lineTo(-0.35, -0.2); g.stroke(); },
+  bank: (g) => { g.beginPath(); g.moveTo(-0.7, -0.3); g.lineTo(0, -0.75); g.lineTo(0.7, -0.3); g.closePath(); g.fill(); for (const x of [-0.5, -0.17, 0.17, 0.5]) g.fillRect(x - 0.07, -0.2, 0.14, 0.62); g.fillRect(-0.72, 0.45, 1.44, 0.14); },
+  dice: (g, bg) => { g.fillRect(-0.55, -0.55, 1.1, 1.1); g.fillStyle = bg; for (const [x, y] of [[-0.28, -0.28], [0.28, 0.28], [0, 0], [0.28, -0.28], [-0.28, 0.28]]) { g.beginPath(); g.arc(x, y, 0.1, 0, 7); g.fill(); } },
+  cart: (g) => { g.lineWidth = 0.1; g.beginPath(); g.moveTo(-0.75, -0.5); g.lineTo(-0.5, -0.5); g.lineTo(-0.3, 0.25); g.lineTo(0.55, 0.25); g.lineTo(0.7, -0.3); g.lineTo(-0.42, -0.3); g.stroke(); g.beginPath(); g.arc(-0.2, 0.5, 0.12, 0, 7); g.arc(0.45, 0.5, 0.12, 0, 7); g.fill(); },
+  scissors: (g) => { g.lineWidth = 0.1; g.beginPath(); g.arc(-0.35, 0.4, 0.2, 0, 7); g.moveTo(0.55, 0.4); g.arc(0.35, 0.4, 0.2, 0, 7); g.stroke(); g.beginPath(); g.moveTo(-0.22, 0.25); g.lineTo(0.4, -0.7); g.moveTo(0.22, 0.25); g.lineTo(-0.4, -0.7); g.stroke(); },
+  phone: (g, bg) => { g.fillRect(-0.32, -0.7, 0.64, 1.4); g.fillStyle = bg; g.fillRect(-0.24, -0.55, 0.48, 0.95); g.beginPath(); g.arc(0, 0.55, 0.07, 0, 7); g.fill(); },
+  sausage: (g) => { g.lineWidth = 0.3; g.lineCap = 'round'; g.beginPath(); g.arc(0, 0.6, 0.8, -2.4, -0.7); g.stroke(); },
+  shirt: (g) => { g.beginPath(); g.moveTo(-0.3, -0.6); g.lineTo(-0.75, -0.3); g.lineTo(-0.55, 0); g.lineTo(-0.38, -0.1); g.lineTo(-0.38, 0.65); g.lineTo(0.38, 0.65); g.lineTo(0.38, -0.1); g.lineTo(0.55, 0); g.lineTo(0.75, -0.3); g.lineTo(0.3, -0.6); g.lineTo(0.12, -0.45); g.lineTo(-0.12, -0.45); g.closePath(); g.fill(); },
+  flower: (g, bg) => { for (let k = 0; k < 6; k++) { const a = k / 6 * 6.28; g.beginPath(); g.arc(Math.cos(a) * 0.3, Math.sin(a) * 0.3 - 0.15, 0.22, 0, 7); g.fill(); } g.fillRect(-0.04, 0.2, 0.08, 0.55); g.fillStyle = bg; g.beginPath(); g.arc(0, -0.15, 0.13, 0, 7); g.fill(); },
+  glasses: (g) => { g.lineWidth = 0.1; g.beginPath(); g.arc(-0.35, 0, 0.26, 0, 7); g.moveTo(0.61, 0); g.arc(0.35, 0, 0.26, 0, 7); g.moveTo(-0.09, 0); g.lineTo(0.09, 0); g.stroke(); },
+  pump: (g, bg) => { g.fillRect(-0.45, -0.6, 0.6, 1.25); g.fillStyle = bg; g.fillRect(-0.35, -0.5, 0.4, 0.3); g.fillStyle = g.strokeStyle; g.lineWidth = 0.08; g.beginPath(); g.moveTo(0.15, -0.3); g.lineTo(0.45, -0.3); g.lineTo(0.45, 0.35); g.stroke(); },
+  tooth: (g) => { g.beginPath(); g.moveTo(-0.45, -0.45); g.bezierCurveTo(-0.45, -0.8, 0, -0.6, 0, -0.55); g.bezierCurveTo(0, -0.6, 0.45, -0.8, 0.45, -0.45); g.lineTo(0.3, 0.7); g.lineTo(0.1, 0.1); g.lineTo(-0.1, 0.1); g.lineTo(-0.3, 0.7); g.closePath(); g.fill(); },
+  ring: (g) => { g.lineWidth = 0.14; g.beginPath(); g.arc(0, 0.2, 0.42, 0, 7); g.stroke(); g.beginPath(); g.moveTo(-0.2, -0.3); g.lineTo(0.2, -0.3); g.lineTo(0.3, -0.45); g.lineTo(0, -0.75); g.lineTo(-0.3, -0.45); g.closePath(); g.fill(); },
+  news: (g, bg) => { g.fillRect(-0.6, -0.5, 1.2, 1.0); g.fillStyle = bg; for (let y = -0.3; y < 0.4; y += 0.2) g.fillRect(-0.45, y, y < 0 ? 0.4 : 0.9, 0.08); g.fillRect(0.05, -0.35, 0.4, 0.3); },
+  bag: (g) => { g.fillRect(-0.5, -0.25, 1.0, 0.9); g.lineWidth = 0.1; g.beginPath(); g.arc(0, -0.25, 0.28, 3.14, 0); g.stroke(); },
+};
+const ICON_OF = { pharmacy: 'cross', chemist: 'cross', fast_food: 'kebab', restaurant: 'fork', cafe: 'cup', bar: 'beer', pub: 'beer', bakery: 'pretzel', bank: 'bank', bookmaker: 'dice', lottery: 'dice', gambling: 'dice', casino: 'dice',
+  convenience: 'cart', supermarket: 'cart', alcohol: 'beer', greengrocer: 'cart', hairdresser: 'scissors', mobile_phone: 'phone', butcher: 'sausage', clothes: 'shirt', florist: 'flower', optician: 'glasses', fuel: 'pump', dentist: 'tooth',
+  pawnbroker: 'ring', money_lender: 'ring', kiosk: 'news', default: 'bag' };
 export function signMaterial(kind) {
   const spec = Array.isArray(kind) ? kind : SIGN[kind] || SIGN.default;
-  const key = spec.join('|');
+  const key = spec.join('|') + '|' + (Array.isArray(kind) ? 'brand' : kind);
   if (signCache[key]) return signCache[key];
-  const [t, s, bg, fg, cross] = spec;
-  const tex = canvasTex(512, 128, (g, w, h) => {
-    g.fillStyle = bg; g.fillRect(0, 0, w, h);
-    g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 6; g.strokeRect(3, 3, w - 6, h - 6);
-    g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = fg;
-    g.font = '900 62px Trebuchet MS, sans-serif'; g.fillText(t, w / 2 + (cross ? 36 : 0), s ? 48 : 66, w - 110);
-    if (s) { g.font = 'bold 26px Trebuchet MS, sans-serif'; g.fillText(s, w / 2 + (cross ? 36 : 0), 100, w - 110); }
-    if (cross) { g.fillStyle = fg; g.fillRect(52, 22, 22, 84); g.fillRect(21, 53, 84, 22); }
+  const [t, s, bg, fg, cross] = spec, ts = (t + ' ' + s).toUpperCase();
+  const brandIcon = /FARMAC/.test(ts) ? 'cross' : /PARIU|SLOT|COTE|JACKPOT|PIERD/.test(ts) ? 'dice' : /BANC|BANK|CREDIT|DOBÂND/.test(ts) ? 'bank' : /CAFEA|STARBAC/.test(ts) ? 'cup' : /COVRIG|PATISER|BOULANG/.test(ts) ? 'pretzel'
+    : /PIZZA|SANDV|CARTOF|FRIED|KEBAB|FAST|PEȘTE|CIORB/.test(ts) ? 'fork' : /BENZIN|CARBURANT/.test(ts) ? 'pump' : /MARKET|DISCOUNT|PREȚURI|HIPER|CASIER|OFERT|GĂSEȘTI/.test(ts) ? 'cart'
+    : /SEMNAL|ABONAMENT|NET |SERVICE CLIENȚI|TELEFO/.test(ts) ? 'phone' : /PANTOF|FASHION|LENJERIE|HAINE/.test(ts) ? 'shirt' : /BIJUT/.test(ts) ? 'ring' : /CURIER|EASYBOX|POȘTA/.test(ts) ? 'news' : null;
+  const icon = cross ? 'cross' : Array.isArray(kind) ? brandIcon : ICON_OF[kind] || 'bag';
+  const tex = canvasTex(1024, 256, (g, w, h) => {
+    // light-box look: glossy gradient face, bevelled frame, badge with a pictogram (or the brand initial), bold title with shadow
+    const c0 = new THREE.Color(bg), top = '#' + c0.clone().offsetHSL(0, 0, 0.08).getHexString(), bot = '#' + c0.clone().offsetHSL(0, 0, -0.1).getHexString();
+    const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, top); gr.addColorStop(0.55, bg); gr.addColorStop(1, bot); g.fillStyle = gr; g.fillRect(0, 0, w, h);
+    g.fillStyle = 'rgba(255,255,255,.14)'; g.fillRect(0, 0, w, h * 0.42);
+    g.lineWidth = 14; g.strokeStyle = 'rgba(0,0,0,.45)'; g.strokeRect(7, 7, w - 14, h - 14); g.lineWidth = 4; g.strokeStyle = 'rgba(255,255,255,.35)'; g.strokeRect(20, 20, w - 40, h - 40);
+    const bx = 128, by = h / 2, br = 86;
+    g.fillStyle = fg; g.beginPath(); g.arc(bx, by, br, 0, 7); g.fill(); g.fillStyle = bg; g.beginPath(); g.arc(bx, by, br - 10, 0, 7); g.fill();
+    g.save(); g.translate(bx, by); g.scale(br * 0.75, br * 0.75); g.fillStyle = fg; g.strokeStyle = fg; g.lineCap = 'round'; g.lineJoin = 'round';
+    if (icon) ICON[icon](g, bg); else { g.font = '900 1.3px Trebuchet MS, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText((t.match(/[A-ZĂÂÎȘȚ]/) || ['?'])[0], 0, 0.08); }
+    g.restore();
+    const tx = 240 + (w - 260) / 2; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.font = `900 ${s ? 108 : 130}px Trebuchet MS, Arial Black, sans-serif`; g.fillStyle = 'rgba(0,0,0,.35)'; g.fillText(t, tx + 5, (s ? 100 : 132) + 6, w - 300);
+    g.fillStyle = fg; g.fillText(t, tx, s ? 100 : 132, w - 300);
+    if (s) { g.font = 'bold 44px Trebuchet MS, sans-serif'; g.globalAlpha = 0.92; g.fillText(s, tx, 192, w - 320); g.globalAlpha = 1; }
   });
-  return (signCache[key] = new THREE.MeshStandardMaterial({ map: tex, emissive: '#fff', emissiveMap: tex, emissiveIntensity: 0.35, roughness: 0.5 }));
+  tex.anisotropy = 4;
+  return (signCache[key] = new THREE.MeshStandardMaterial({ map: tex, emissive: '#fff', emissiveMap: tex, emissiveIntensity: 0.35, roughness: 0.35 }));
 }
 
 // ---------- Geometry helpers
@@ -402,7 +441,7 @@ export async function buildWorld(scene, url = 'assets/map.json', opts = {}) {
   const chunkOf = (x, z) => { const k = Math.floor(x / CH) + ':' + Math.floor(z / CH); if (!chunks.has(k)) chunks.set(k, { buckets: facadeMats.map(() => ({ pos: [], uv: [], col: [] })), garage: { pos: [], uv: [], col: [] }, plain: { pos: [], uv: [], col: [] }, roof: { pos: [], col: [] }, ground: { pos: [], uv: [], col: [] }, bal: [] }); return chunks.get(k); };
   // block colours: old grey-beige panels, renovated pastel thermal insulation, and the odd bold one (deterministic per block)
   const WALLC = ['#ffffff', '#fff6e8', '#f2f2ff', '#fff0f0', '#f0fff4', '#fffbe0', '#e6e0d4', '#dcd6cc', '#ffe8c0', '#ffd8c6', '#e2efcf', '#dde7f5', '#fff0a6', '#f7d9e6'];
-  const buildingsOut = [];
+  const buildingsOut = [], FAC = opts.facades || {};
   // ---------- Special buildings: mall, big-box stores, socialist commercial complexes, schools/hospitals, churches
   const retailAreas = M.areas.filter(a => a.k === 'retail' || a.k === 'market').map(a => D(a.p));
   const polyArea2 = (pts) => { let a = 0; for (let i = 0; i < pts.length; i++) { const [x1, z1] = pts[i], [x2, z2] = pts[(i + 1) % pts.length]; a += x1 * z2 - x2 * z1; } return Math.abs(a / 2); };
@@ -611,7 +650,8 @@ export async function buildWorld(scene, url = 'assets/map.json', opts = {}) {
     const isGarage = b.k === 'garage' || b.k === 'garages' || (h < 3.6 && b.l <= 1);
     const special = ['church', 'school', 'retail', 'commercial', 'kindergarten', 'industrial', 'warehouse', 'hospital', 'office', 'supermarket'].includes(b.k);
     const tgt = isGarage ? garage : special ? plain : buckets[bi % 4];
-    const tint = colorArr(isGarage ? '#ffffff' : WALLC[(hash(bi * 7.13) * WALLC.length) | 0]);
+    const fac = FAC[b.i];   // documented real facade (assets/facades.json, keyed by OSM id)
+    const tint = colorArr(isGarage ? '#ffffff' : fac && fac.color ? fac.color : WALLC[(hash(bi * 7.13) * WALLC.length) | 0]);
     const dim = (c, f) => [c[0] * f, c[1] * f, c[2] * f];
     const block = !isGarage && !special && h > 8;
     const GH = block ? 3.2 : 0;                    // ground floor band height
@@ -653,7 +693,7 @@ export async function buildWorld(scene, url = 'assets/map.json', opts = {}) {
     const rc = colorArr(isGarage ? '#5a5652' : '#77726c', 0.06);
     for (const t of tris) for (const i of [t[0], t[2], t[1]]) { roof.pos.push(contour[i].x, h, contour[i].y); roof.col.push(...rc); }
     collider.add(pts, { h, walkable: isGarage, building: bi });
-    buildingsOut.push({ pts, h, levels: b.l, kind: b.k, name: b.n, shop: b.s, brand: b.b, garage: isGarage, special: stype, block, plainKind: special, id: bi });
+    buildingsOut.push({ pts, h, levels: b.l, kind: b.k, name: b.n, shop: b.s, brand: b.b, garage: isGarage, special: stype, block, plainKind: special, id: bi, osmId: b.i });
   });
   for (const k in spB) if (spB[k].pos.length) { const m = new THREE.Mesh(geo(spB[k].pos, spB[k].uv, spB[k].col), SP[k].m); m.castShadow = true; m.receiveShadow = true; world.add(m); }
   const addMesh = (g, mat, shadow = true) => { if (!g.attributes.position.count) return; const m = new THREE.Mesh(g, mat); m.castShadow = shadow; m.receiveShadow = true; world.add(m); return m; };
@@ -718,7 +758,7 @@ export async function buildWorld(scene, url = 'assets/map.json', opts = {}) {
         const [ax, az] = pts[j], [cx, cz] = pts[i]; const ex = cx - ax, ez = cz - az, L2 = ex * ex + ez * ez; if (L2 < 16) continue;
         let t = ((p.x - ax) * ex + (p.z - az) * ez) / L2; t = Math.max(0.15, Math.min(0.85, t));
         const px = ax + ex * t, pz = az + ez * t, d = Math.hypot(p.x - px, p.z - pz);
-        if (!best || d < best.d) best = { d, px, pz, ex, ez, L: Math.sqrt(L2), h: poly.data.h };
+        if (!best || d < best.d) best = { d, px, pz, ex, ez, L: Math.sqrt(L2), h: poly.data.h, pts: poly.pts };
       }
     }
     // local knowledge: some shops have their sign on a specific street side, sharing the facade with a neighbour
@@ -735,7 +775,8 @@ export async function buildWorld(scene, url = 'assets/map.json', opts = {}) {
         best = { d: 0, px: pick.mx - pick.ux * half / 2, pz: pick.mz - pick.uz * half / 2, ex: pick.ux * half, ez: pick.uz * half, L: half, h: pick.h };
         if (lk.shareWith && !lk.done) { lk.done = true; placeSign({ wall: { px: pick.mx + pick.ux * half / 2, pz: pick.mz + pick.uz * half / 2, nx: pick.nx, nz: pick.nz, h: pick.h, L: half } }, parodyFor(lk.shareWith)); } } }
     if (!best || best.d > 25) continue;
-    const nx = best.ez / best.L, nz = -best.ex / best.L; // outward (right side of CCW edge)
+    let nx = best.ez / best.L, nz = -best.ex / best.L; // outward (right side of CCW edge)
+    if (best.pts && Collider.inside(best.pts, best.px + nx * 1.5, best.pz + nz * 1.5)) { nx = -nx; nz = -nz; }   // footprint wound the other way: flip so the door is outside
     p.wall = { px: best.px, pz: best.pz, nx, nz, h: best.h, L: best.L };
     p.door = [best.px + nx * 1.8, best.pz + nz * 1.8];
     const par = parodyFor(p.b, p.n);
@@ -768,7 +809,7 @@ export async function buildWorld(scene, url = 'assets/map.json', opts = {}) {
         } }
     }
     const N = Math.min(spots.length, 2600);
-    const trunks = new THREE.InstancedMesh(trunkG, new THREE.MeshStandardMaterial({ color: '#7b5a3c', roughness: 1 }), N);
+    const trunks = new THREE.InstancedMesh(trunkG, fadeNearCamera(new THREE.MeshStandardMaterial({ color: '#7b5a3c', roughness: 1 }), 1.5, 4.5), N);
     const crowns = new THREE.InstancedMesh(crownG, fadeNearCamera(new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: .9, flatShading: true })), N);
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sv = new THREE.Vector3();
     for (let i = 0; i < N; i++) { const [x, z] = spots[i]; const s = rand(0.75, 1.35);

@@ -1,0 +1,90 @@
+{
+ "_schema": {
+  "about": "Real facades for the Dristor 1 hero zone, keyed by OSM id (map.json buildings[].i). Only documented facts; one entry per building.",
+  "fields": {
+   "color": "main wall colour as #rrggbb (from photo)",
+   "balconies": "closed | open | mixed",
+   "ground": "shops | flats | mixed",
+   "notes": "free text (renovation, signs, special features)",
+   "source": "mapillary:<image_id> | tavi-photo:<file> | local-knowledge",
+   "author": "photo author (for CC-BY-SA attribution)",
+   "captured": "YYYY-MM-DD",
+   "confidence": "0..1"
+  }
+ },
+ "pilot": [
+  {
+   "osm": "311451327",
+   "name": "",
+   "levels": 11,
+   "x": -14,
+   "z": -49,
+   "dist_m": 51,
+   "osm_url": "https://www.openstreetmap.org/way/311451327"
+  },
+  {
+   "osm": "50285221",
+   "name": "Bl. 2",
+   "levels": 11,
+   "x": 1,
+   "z": 55,
+   "dist_m": 55,
+   "osm_url": "https://www.openstreetmap.org/way/50285221"
+  },
+  {
+   "osm": "28897860",
+   "name": "Bl. 58",
+   "levels": 11,
+   "x": 69,
+   "z": -45,
+   "dist_m": 82,
+   "osm_url": "https://www.openstreetmap.org/way/28897860"
+  },
+  {
+   "osm": "28897846",
+   "name": "Bl. 58A",
+   "levels": 11,
+   "x": 87,
+   "z": -9,
+   "dist_m": 87,
+   "osm_url": "https://www.openstreetmap.org/way/28897846"
+  },
+  {
+   "osm": "1498387022",
+   "name": "",
+   "levels": 11,
+   "x": -31,
+   "z": -84,
+   "dist_m": 90,
+   "osm_url": "https://www.openstreetmap.org/way/1498387022"
+  },
+  {
+   "osm": "50285223",
+   "name": "Bl. 5",
+   "levels": 11,
+   "x": -92,
+   "z": 20,
+   "dist_m": 94,
+   "osm_url": "https://www.openstreetmap.org/way/50285223"
+  },
+  {
+   "osm": "1498387023",
+   "name": "",
+   "levels": 11,
+   "x": -19,
+   "z": -95,
+   "dist_m": 97,
+   "osm_url": "https://www.openstreetmap.org/way/1498387023"
+  },
+  {
+   "osm": "50322486",
+   "name": "Bl. S13",
+   "levels": 11,
+   "x": -60,
+   "z": 82,
+   "dist_m": 102,
+   "osm_url": "https://www.openstreetmap.org/way/50322486"
+  }
+ ],
+ "buildings": {}
+}

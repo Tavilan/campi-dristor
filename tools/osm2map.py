@@ -250,6 +250,7 @@ for b in raw_b:
     if height is None: height = height_of(levels, kind)
     if levels is None: levels = max(1, round((height - 0.6) / 2.8))
     o = {'p': qp(b['pts']), 'h': round(height, 1), 'l': int(levels)}
+    o['i'] = str(b['id'])   # stable OSM id (way id, or relation id+ring size) for data files like assets/facades.json
     if kind not in RESID: o['k'] = kind
     if ctx in ('park', 'wood', 'water', 'pier', 'pitch', 'dog', 'play') and not b['levels'] and (height or 0) < 9: o['x'] = 'pav'
     if t.get('name'): o['n'] = t['name']

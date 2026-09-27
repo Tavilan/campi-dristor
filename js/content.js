@@ -83,6 +83,11 @@ export const NPC_DEFS = {
           await c.say('Nelu', 'Na, cu de toate, cu cartofi, cu sos de usturoi dublu. Nu pupa pe nimeni azi.');
           c.setMission('moodeng'); c.phoneLater();
         } else await c.say('Nelu', 'Tot 30 de lei costă, bă. Nu s-a ieftinit de când ai plecat.');
+      } else if (!c.onJob && ['moodeng', 'metrou', 'gata'].includes(c.mission)) {
+        await c.say('Nelu', pick(['Bă, Câmpi, livratoru\' mi-a fugit iar cu trotineta. Vrei să faci și tu un ban?', 'Am o comandă și n-am cine s-o ducă. Ai trotinetă, nu? Hai, că plătesc.']));
+        const r = await c.choose(['Dă-mi comanda, o duc eu!', 'Nu acum, Nelu.']);
+        if (r === 0) { if (c.startJob()) await c.say('Nelu', 'Ți-am pus adresa pe hartă. Fugi, că se răcește! Și nu mânca din ea, că știu câte felii de roșie pun.'); else await c.say('Nelu', 'A, stai, s-a anulat comanda. Revino mai încolo.'); }
+        else await c.say('Nelu', 'Bine, mori de foame în stil propriu.');
       } else {
         await c.say('Nelu', pick(['Ce mai e, bă? Vrei și suc? E cald, frigideru\' s-a stricat de la tine.', 'Shaorma de aici a vindecat mai multe mahmureli decât farmacia de vizavi.', 'Am un văr care a deschis shaormerie în Germania. Acu\' e bogat. Eu am tot Dristoru\'.']));
       }
@@ -192,6 +197,40 @@ export const PED_LINES = [
   'Nu mă filma, coaie!', 'Știi unde e Dristor 2? Că eu sunt la Dristor 1 de 20 de minute.', 'Aoleu, ce ochelari! Ești de la ANAF?', 'Mă scuzați, sunteți din bloc? Că n-a mai venit apa caldă din martie.',
   'Hai, bă, că întârzii la muncă. Iar.', 'Six seven! ... Ce, nu știi? Ești bătrân.', 'Ce faci, bă, Câmpi? Te-am văzut aseară la shaorma. Ai dansat pe masă.', 'Doamne, iar au săpat pe Mihai Bravu.',
   'Parcarea asta e a mea, am pus găleată pe ea din 2009.', 'Ai auzit? Se face metrou până la Ploiești. Pe bune. Anu\' ăsta.', 'Mânca-ți-aș, ce frumos ești azi.', 'Pleacă, bă, de lângă mine că-mi iei semnalu\'.',
+];
+// Street encounters: short branching chats with random passers-by (who = the passer-by's name)
+export const PED_TALKS = [
+  async (x, who) => { await x.say(who, 'Frate, ai 2 lei de-o pâine?'); const c = await x.choose(['Na, ia 2 lei.', 'Pâine? La ora asta? Sigur nu e bere?', 'N-am, frate, sunt și eu pe minus.']);
+    if (c === 0) { x.money(-2); await x.say(who, 'Să-ți dea Dumnezeu sănătate! Și un 6-7 la păcănele!'); } else if (c === 1) await x.say(who, '... Bine, bă, m-ai prins. E pentru bere.'); else await x.say(who, 'Te înțeleg. Toată țara e pe minus.'); },
+  async (x, who) => { await x.say(who, 'Bă, tu ești ăla de pe TikTok? Ăla cu 6-7?'); const c = await x.choose(['Da, eu sunt. Vrei poză?', 'Nu, mă confunzi.', 'SIX SEVEN!']);
+    if (c === 0) { await x.say(who, 'Stai să-mi scot telefonul... gata, am pus-o pe story. 3 like-uri deja!'); x.sfx('ding'); } else if (c === 1) await x.say(who, 'Păcat, ăla era mai frumos.'); else { await x.say(who, 'AAAA! EȘTI TU! Mama n-o să creadă!'); x.money(6); await x.say(who, 'Na, 6 lei. Știu că nu-s 7, dar atât am.'); } },
+  async (x, who) => { await x.say(who, 'Mă scuzați, știți unde e Dristor 2?'); const c = await x.choose(['Lângă Dristor 1, normal.', 'E pe dreapta, după Mega Image.', 'N-a existat niciodată. E o conspirație.']);
+    if (c === 0) await x.say(who, 'Mersi, foarte util. Chiar foarte util.'); else if (c === 1) await x.say(who, 'Care Mega Image, că sunt vreo 4 aici.'); else await x.say(who, 'Știam eu! De-aia nu-l găsesc de 20 de minute!'); },
+  async (x, who) => { await x.say(who, 'Hai, bă, că iar întârzii la muncă. Știi cât e ceasul?'); const c = await x.choose(['E 6 și 7.', 'E ora de shaorma.', 'Nu știu, n-am mai lucrat din 2019.']);
+    if (c === 0) await x.say(who, 'Ce 6 și 7, bă, că e 5 fix! ... Stai. Ceasul meu s-a oprit.'); else if (c === 1) await x.say(who, 'Mereu e ora de shaorma. Ai dreptate.'); else await x.say(who, 'Și din ce trăiești? ... Nu, nu-mi spune. Nu vreau să știu.'); },
+  async (x, who) => { await x.say(who, 'Nu mă filma, coaie!'); const c = await x.choose(['Nu te filmam.', 'Zâmbește, ești live!', 'Filmam porumbeii.']);
+    if (c === 1) await x.say(who, 'Pe bune? Salut, mamă! Salut, nea Gică de la scara B!'); else if (c === 2) await x.say(who, 'Ah, porumbeii. Da, sunt fotogenici.'); else await x.say(who, 'Așa ziceau toți. Și pe urmă eram pe grupul blocului.'); },
+  async (x, who) => { await x.say(who, 'Ai auzit? Se face metrou până la Ploiești. Anu\' ăsta.'); const c = await x.choose(['Da, și autostrada spre Moldova.', 'Cine ți-a zis?', 'Eu mă mut la Ploiești atunci.']);
+    if (c === 0) await x.say(who, 'Exact! Le termină pe amândouă odată. În 2067.'); else if (c === 1) await x.say(who, 'Un văr de-al unui prieten care lucrează la primărie. E sigur.'); else await x.say(who, 'Și ce faci la Ploiești? ... A, da, nimic. Ca aici.'); },
+  async (x, who) => { await x.say(who, 'Parcarea asta e a mea! Am pus găleată pe ea din 2009!'); const c = await x.choose(['N-am mașină, nea.', 'Ce găleată frumoasă!', 'Și dacă îți mut găleata?']);
+    if (c === 0) await x.say(who, 'Atunci ce cauți aici? Suspect.'); else if (c === 1) await x.say(who, 'Mersi! E de la Dedeman. Am și o jantă pe partea cealaltă.'); else await x.say(who, 'Încearcă. Am văzut filmul ăsta. Nu se termină bine pentru tine.'); },
+  async (x, who) => { await x.say(who, 'Mă scuzați, sunteți din bloc? Că n-a mai venit apa caldă de marți.'); const c = await x.choose(['Nu, dar vă înțeleg.', 'Apa caldă e un mit.', 'Sunați la administrator.']);
+    if (c === 1) await x.say(who, 'Ca Dristor 2. Ca metroul la Ploiești.'); else if (c === 2) await x.say(who, 'Am sunat. Mi-a zis să sun la administrator.'); else await x.say(who, 'Mersi. Măcar cineva mă înțelege în cartierul ăsta.'); },
+  async (x, who) => { await x.say(who, 'Aoleu, ce ochelari! Ești de la ANAF?'); const c = await x.choose(['Da. Ai bonul de la covrigi?', 'Nu, sunt doar deștept.', 'Sunt de la Protecția Consumatorului.']);
+    if (c === 0) { await x.say(who, 'Na, na, ia 5 lei și nu m-ai văzut!'); x.money(5); } else if (c === 1) await x.say(who, 'Deștept în Dristor? Primul.'); else await x.say(who, 'Atunci du-te la shaorma de la colț. Au pus castraveți murați de anul trecut.'); },
+  async (x, who) => { await x.say(who, 'Ce faci, bă, Câmpi? Te-am văzut aseară la shaorma. Ai dansat pe masă.'); const c = await x.choose(['Nu eram eu.', 'Și ce dacă? Era o masă solidă.', 'Ai filmat?']);
+    if (c === 0) await x.say(who, 'Ba erai tu. Aveai tricoul ăsta galben. Și cântai Salam.'); else if (c === 1) await x.say(who, 'Solidă era. Până la refren.'); else await x.say(who, 'Evident. Are 40.000 de vizualizări. Ești faimos, frate.'); },
+  async (x, who) => { await x.say(who, 'Scuze, ai încărcător de iPhone?'); const c = await x.choose(['Am, dar de Nokia 3310.', 'Da, na, dar mi-l dai înapoi.', 'Încărcătorul e un concept burghez.']);
+    if (c === 1) { await x.say(who, 'Sigur! ... Mersi! Uite, ia 3 lei pentru curent.'); x.money(3); } else if (c === 0) await x.say(who, 'Ăla ține bateria o săptămână. Îți invidiez viața.'); else await x.say(who, 'Wow. Ok. Tu votezi la metrou?'); },
+  async (x, who) => { await x.say(who, 'Bă, ai văzut hipopotamul? Zice lumea că e prin Dristor.'); const c = await x.choose(['Moo Deng? E la lacul IOR.', 'Hipopotamul sunt eu după shaorma.', 'N-am văzut nimic.']);
+    if (c === 0) await x.say(who, 'Pe bune?! Mă duc să-i fac poză! Cică mușcă, dar e cute.'); else if (c === 1) await x.say(who, 'Hahaha! Ești mișto, Câmpi.'); else await x.say(who, 'Păcat. Zice că e roz. Și furios. Ca soacră-mea.'); },
+  async (x, who) => { await x.say(who, 'Hei, vrei să joci o mână de table? Pe 5 lei.'); const c = await x.choose(['Hai! Pe 5 lei.', 'Nu, că pierd.', 'Doar dacă zic eu zarurile.']);
+    if (c === 0) { if (Math.random() < 0.5) { x.sfx('cash'); x.money(5); await x.say(who, 'Șase-șapte?! Cine dă 6-7 la table?! Na-ți banii!'); } else { x.sfx('lose'); x.money(-5); await x.say(who, 'Dublu șase! Ghinion, frate. Mersi de 5 lei.'); } }
+    else if (c === 1) await x.say(who, 'Înțelept. Nimeni nu câștigă la table cu pensionarii din parc.'); else await x.say(who, 'Șase și șapte, nu? Nu există 7 la zar, bă!'); },
+  async (x, who) => { await x.say(who, 'Mânca-ți-aș, ce băiat frumos! Ești însurat?'); const c = await x.choose(['Nu încă, tanti.', 'Sunt însurat cu păcănelele.', 'Aveți o nepoată?']);
+    if (c === 2) await x.say(who, 'Am! E farmacistă! Stai să-ți dau numărul... unde mi-s ochelarii...'); else if (c === 1) await x.say(who, 'Vai de mine. Du-te la biserică, maică.'); else await x.say(who, 'Lasă, că te însori tu. Vezi să nu fie din Titan.'); },
+  async (x, who) => { await x.say(who, 'Bă! Tu mi-ai zgâriat Loganul ieri?'); const c = await x.choose(['Nu, eu am trotinetă.', 'Care Logan? Sunt 400 aici.', 'Da. Și l-am și reparat cu un sticker.']);
+    if (c === 0) await x.say(who, 'Trotinetă... ok, atunci nu tu. Tu doar lovești pietonii.'); else if (c === 1) await x.say(who, 'Ăla gri. ... Ok, mda. Sunt toți gri.'); else await x.say(who, 'Stickerul cu Moo Deng?! Ăla e cel mai frumos lucru de pe mașină!'); },
 ];
 export const DOG_BITES = ['Te-a mușcat un maidanez! -5 lei (vaccin la farmacie)', 'Haita te-a prins! Ai rămas fără un adidas. -5 lei', 'MAIDANEZII! Fugi, bă!'];
 export const CAR_HITS = ['Ți-a dat cu Logan-ul! -10 lei (să-i plătești oglinda)', 'BĂ, FII ATENT! Ai lovit un BMW cu fața. -10 lei', 'Te-a lovit o mașină de la Uber. N-avea nici 5 stele.'];

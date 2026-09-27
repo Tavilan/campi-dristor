@@ -285,9 +285,54 @@ export async function makeRigCharacter(kind = 'male', colors = {}, head = null) 
     const wW = Math.min(1, v / 1.1), wR = 0; actions.idle.setEffectiveWeight(1 - wW); actions.walk.setEffectiveWeight(wW); actions.run.setEffectiveWeight(wR);
     actions.walk.timeScale = Math.max(0.6, v / 1.4); mixer.update(dt); } };
 }
+
+// Câmpi v2: the rig's own smooth, properly skinned body (not capsules), dressed by painting it per region:
+// yellow T-shirt with short sleeves and a hem, dark jeans with a belt, white sneakers with grey soles, skin on forearms/hands/neck.
+// The mannequin head is cut away (his real 3D face sits on the head bone).
+async function makeCampiRealBody() {
+  const rig = await loadRig();
+  const root = rig.SU.clone(rig.gltf.scene);
+  const surf = root.getObjectByName('Beta_Surface'), joints = root.getObjectByName('Beta_Joints');
+  // both X-bot meshes (the body shell and the joint fillers) get the same outfit so there are no gaps at waist/shoulders/knees
+  let y0 = 1e9, y1 = -1e9; for (const m of [surf, joints]) { if (!m) continue; const P = m.geometry.attributes.position; for (let i = 0; i < P.count; i++) { y0 = Math.min(y0, P.getY(i)); y1 = Math.max(y1, P.getY(i)); } }
+  const H = y1 - y0 || 1;
+  const C = { shirt: new THREE.Color('#f2c318'), hem: new THREE.Color('#d9ab0e'), pants: new THREE.Color('#27324f'), seam: new THREE.Color('#3b4a70'), belt: new THREE.Color('#2a1f18'), buckle: new THREE.Color('#b8b8b8'),
+    skin: new THREE.Color('#c99b80'), shoe: new THREE.Color('#f4f4f2'), sole: new THREE.Color('#8f8f8f'), lace: new THREE.Color('#d8d8d8') };
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.78, metalness: 0 });
+  const dress = (mesh) => {
+    const src = mesh.geometry, P = src.attributes.position, N = src.attributes.normal, SI = src.attributes.skinIndex, SW = src.attributes.skinWeight;
+    const names = mesh.skeleton.bones.map(b => b.name.replace('mixamorig', ''));
+    const dom = new Array(P.count), hN = new Float32Array(P.count);
+    for (let i = 0; i < P.count; i++) { let bi = 0, bw = -1; for (let k = 0; k < 4; k++) { const w = SW.getComponent(i, k); if (w > bw) { bw = w; bi = SI.getComponent(i, k); } } dom[i] = names[bi] || ''; hN[i] = (P.getY(i) - y0) / H; }
+    const region = (i) => { const d = dom[i], h = hN[i];
+      if (/^Head|HeadTop/.test(d)) return 'cut';
+      if (/Foot|Toe/.test(d) || h < 0.06) return h < 0.018 ? 'sole' : 'shoe';
+      if (/Hand|Thumb|Index|Middle|Ring|Pinky|ForeArm/.test(d)) return 'skin';
+      if (/Neck/.test(d)) return h > 0.84 ? 'skin' : 'shirt';
+      if (/Arm$|Shoulder|Spine/.test(d)) return 'shirt';
+      if (/UpLeg|Leg/.test(d)) return 'pants';
+      if (h < 0.555) return 'pants'; if (h < 0.572) return 'belt'; return 'shirt'; };
+    const pos = new Float32Array(P.count * 3), col = new Float32Array(P.count * 3), keep = new Uint8Array(P.count);
+    for (let i = 0; i < P.count; i++) { const r = region(i); keep[i] = r !== 'cut';
+      const d = dom[i], inflate = r === 'shirt' ? (/Spine2/.test(d) ? 1.6 : /Arm$/.test(d) ? 1.3 : 1.0) : r === 'pants' || r === 'belt' ? 1.1 : r === 'shoe' || r === 'sole' ? 0.9 : 0;
+      const inf = inflate * H / 180; pos[i * 3] = P.getX(i) + N.getX(i) * inf; pos[i * 3 + 1] = P.getY(i) + N.getY(i) * inf; pos[i * 3 + 2] = P.getZ(i) + N.getZ(i) * inf;
+      let c = C[r] || C.shirt; if (r === 'pants' && Math.abs(N.getX(i)) > 0.92) c = C.seam; if (r === 'belt' && Math.abs(P.getX(i)) < 2.2 * H / 180 && N.getZ(i) > 0.7) c = C.buckle;
+      if (r === 'shoe' && N.getY(i) > 0.55 && hN[i] > 0.03) c = C.lace;
+      const n = 0.94 + ((i * 7919) % 97) / 97 * 0.08; col[i * 3] = c.r * n; col[i * 3 + 1] = c.g * n; col[i * 3 + 2] = c.b * n; }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('normal', N); g.setAttribute('skinIndex', SI); g.setAttribute('skinWeight', SW); g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    const idx = src.index ? src.index.array : Array.from({ length: P.count }, (_, i) => i), out = [];
+    for (let t = 0; t < idx.length; t += 3) if (keep[idx[t]] && keep[idx[t + 1]] && keep[idx[t + 2]]) out.push(idx[t], idx[t + 1], idx[t + 2]);
+    g.setIndex(out); g.computeVertexNormals();
+    mesh.geometry = g; mesh.material = mat; mesh.castShadow = true; mesh.frustumCulled = false; mesh.visible = true; };
+  dress(surf); if (joints) dress(joints);
+  const mixer = new THREE.AnimationMixer(root), actions = {}; for (const clip of rig.gltf.animations) actions[clip.name.toLowerCase()] = mixer.clipAction(clip);
+  for (const k of ['idle', 'walk', 'run']) { actions[k].play(); actions[k].setEffectiveWeight(k === 'idle' ? 1 : 0); }
+  const headBone = root.getObjectByName('mixamorigHead'), neck = root.getObjectByName('mixamorigNeck');
+  return { root, mesh: surf, mixer, actions, headBone, neck, setWalk(v, dt) { const wW = Math.min(1, v / 1.1); actions.idle.setEffectiveWeight(1 - wW); actions.walk.setEffectiveWeight(wW); actions.run.setEffectiveWeight(0); actions.walk.timeScale = Math.max(0.6, v / 1.4); mixer.update(dt); } };
+}
 // Câmpi: muscular body on the rig, his real 3D face mounted on the head bone
 export async function makeCampiBody() {
-  const c = await makeRigCharacter('campi', { shirt: '#f2c318', pants: '#1f2a44', skin: '#c79a80', shoes: '#f2f2f0' });
+  const c = await makeCampiRealBody();
   c.headBone.scale.setScalar(0.0001);                     // (no mannequin head in our mesh anyway; keeps children hidden)
   const headMount = new THREE.Group(); c.neck.add(headMount);
   const headInner = new THREE.Group(); headInner.scale.setScalar(100); headMount.add(headInner);   // bones are in cm

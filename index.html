@@ -14,12 +14,12 @@
 <link rel="icon" href="assets/icon.png">
 <link rel="preload" as="image" href="assets/splash-portrait.jpg" media="(max-aspect-ratio: 1/1)">
 <link rel="preload" as="image" href="assets/splash-landscape.jpg" media="(min-aspect-ratio: 1/1)">
-<link rel="stylesheet" href="style.css?v=7">
+<link rel="stylesheet" href="style.css?v=9">
 <!-- every module gets the same version tag, so browsers fetch the new files after an update (bump V on each release) -->
 <script type="importmap">{ "imports": {
   "three": "./lib/three.module.min.js",
-  "./js/world.js": "./js/world.js?v=28", "./js/details.js": "./js/details.js?v=28", "./js/brands.js": "./js/brands.js?v=28",
-  "./js/characters.js": "./js/characters.js?v=28", "./js/content.js": "./js/content.js?v=28", "./js/voices.js": "./js/voices.js?v=28", "./js/slug.js": "./js/slug.js?v=28"
+  "./js/world.js": "./js/world.js?v=35", "./js/details.js": "./js/details.js?v=35", "./js/brands.js": "./js/brands.js?v=35",
+  "./js/characters.js": "./js/characters.js?v=35", "./js/content.js": "./js/content.js?v=35", "./js/voices.js": "./js/voices.js?v=35", "./js/slug.js": "./js/slug.js?v=35"
 } }</script>
 </head>
 <body>
@@ -44,6 +44,8 @@
   <button id="bTTS" class="pill iconbtn" title="Voci NPC">🗣️</button>
   <button id="bNight" class="pill iconbtn" title="Zi / noapte">🌙</button>
   <button id="bPhoto" class="pill iconbtn" title="Mod foto (P)">📷</button>
+  <button id="bZoom" class="pill iconbtn" title="Cameră aproape / departe (Z)">🔍</button>
+  <button id="bEmote" class="pill iconbtn" title="Six seven! (G)">🤌</button>
 </div>
 
 <div id="toast"></div>
@@ -94,6 +96,6 @@
   <div class="credit">Făcut cu Claude Opus 5.5 · date hartă © OpenStreetMap contributors (ODbL)</div>
 </div>
 
-<script type="module" src="js/game.js?v=28"></script>
+<script type="module" src="js/game.js?v=35"></script>
 </body>
 </html>
